@@ -4,8 +4,7 @@
 
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>All Recipes</h1>
-        <a href="{{ url_for('new_recipe_form') }}" class="btn btn-primary">New Recipe</a>
+        <h1>{% if tag_name %}Recipes tagged with "{{ tag_name }}"{% elif search %}Search results for "{{ search }}"{% else %}All Recipes{% endif %}</h1>
     </div>
 
     {% if recipes %}

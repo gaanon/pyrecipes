@@ -6,7 +6,7 @@
                 <h5 class="card-title">{{ recipe.name }}</h5>
                 <p class="card-text">
                     {% for recipe_tag in recipe.recipe_tags %}
-                        <a href="{{ url_for('view_recipes_by_tag', tag_name=recipe_tag.tag.name) }}" class="badge bg-secondary text-decoration-none">{{ recipe_tag.tag.name }}</a>
+                        <a href="{{ url_for('view_recipes_by_tag', tag_name=recipe_tag.tag.name) }}" class="badge text-decoration-none" style="background-color: {{ get_color_from_string(recipe_tag.tag.name) }}">{{ recipe_tag.tag.name }}</a>
                     {% endfor %}
                 </p>
             </div>

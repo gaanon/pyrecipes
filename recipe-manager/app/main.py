@@ -9,7 +9,10 @@ app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+from . import utils
+
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals['get_color_from_string'] = utils.get_color_from_string
 
 # Dependency to get the database session
 def get_db():
