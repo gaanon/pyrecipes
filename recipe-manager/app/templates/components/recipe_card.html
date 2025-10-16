@@ -1,0 +1,15 @@
+<div class="col">
+    <div class="card h-100">
+        <a href="{{ url_for('recipe_detail', id=recipe.id) }}" class="text-decoration-none text-dark">
+            <img src="{{ url_for('static', path=recipe.photo_path) if recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="card-img-top" alt="{{ recipe.name }}">
+            <div class="card-body">
+                <h5 class="card-title">{{ recipe.name }}</h5>
+                <p class="card-text">
+                    {% for recipe_tag in recipe.recipe_tags %}
+                        <a href="{{ url_for('view_recipes_by_tag', tag_name=recipe_tag.tag.name) }}" class="badge bg-secondary text-decoration-none">{{ recipe_tag.tag.name }}</a>
+                    {% endfor %}
+                </p>
+            </div>
+        </a>
+    </div>
+</div>

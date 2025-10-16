@@ -1,0 +1,357 @@
+Recipe Manager App - Design Specification for Claude Code
+Technology Stack
+
+Backend: Python 3 with FastAPI
+Templates: Jinja2 templates
+Frontend: Bootstrap 5
+Database: MySQL
+Deployment: Docker Compose (all services containerized)
+Target Environment: Raspberry Pi (local deployment)
+
+
+Core Features
+1. Main Page (/)
+Navigation Bar:
+
+"Home" button (links to main page)
+"New Recipe" button (links to create recipe page)
+Search bar (search recipes by name)
+
+Search & Filtering:
+
+Search by recipe name (text input in navbar)
+Filter by tags (dropdown or tag cloud)
+Filter by ingredients (text input - searches for recipes containing those ingredients)
+Sort options: Name (A-Z), Name (Z-A)
+
+Recipe Grid:
+
+Display 25 recipes per page in a responsive grid
+Each recipe card shows:
+
+Preview photo (or default placeholder if no photo)
+Recipe title
+Tags/labels as badges
+
+
+Pagination controls (Previous/Next buttons, page numbers)
+Recipe counter: "Showing 1-25 of 150 recipes"
+Empty state message when no recipes exist: "No recipes yet! Add your first recipe to get started."
+
+Card Interactions:
+
+Clicking a recipe card navigates to the recipe detail page
+
+
+2. Recipe Detail Page (/recipe/{id})
+Display:
+
+Recipe title (large, prominent)
+Full-size photo (or default placeholder)
+Tags/labels as badges
+Servings information
+Grouped ingredients list (with group headers like "For the dough:", "For the filling:")
+
+Show ingredient name, amount, unit
+Mark optional ingredients clearly (e.g., with "(optional)" text)
+
+
+Step-by-step cooking instructions (numbered list)
+Notes/Tips section:
+
+Display all notes with their names as headers
+Show note text below each header
+
+
+
+Actions:
+
+"Edit Recipe" button (navigates to edit page)
+"Delete Recipe" button (shows confirmation dialog before deletion)
+"Add Note" button (opens form to add a new note)
+
+Add Note Form:
+
+Note name (text input)
+Note text (textarea)
+"Save" and "Cancel" buttons
+
+
+3. New Recipe Page (/recipe/new)
+Form Fields:
+
+Recipe name (text input, required)
+Photo upload (file picker, optional, accepts jpg/png/webp, max 5MB)
+
+Show preview of selected image
+
+
+Servings/Yield (text input, e.g., "Serves 4")
+Tags (tag input with autocomplete from existing tags, create new if doesn't exist)
+
+Ingredients Section:
+
+Dynamic ingredient list with "Add Ingredient" button
+Each ingredient has:
+
+Group name (optional, text input for grouping)
+Ingredient name (text input, required)
+Amount and unit (text input, e.g., "1 cup", "100ml", "2", user writes freely)
+"Optional" checkbox
+"Remove" button
+
+
+Ingredients can be reordered (drag-and-drop or up/down arrows)
+
+Instructions Section:
+
+Dynamic step list with "Add Step" button
+Each step has:
+
+Step number (auto-generated)
+Step description (textarea, required)
+"Remove" button
+
+
+Steps can be reordered
+
+Notes Section:
+
+Dynamic notes list with "Add Note" button
+Each note has:
+
+Note name (text input)
+Note text (textarea)
+"Remove" button
+
+
+
+Actions:
+
+"Save Recipe" button (validates and saves)
+"Cancel" button (returns to main page)
+
+
+4. Edit Recipe Page (/recipe/{id}/edit)
+
+Same form as "New Recipe" page
+Pre-populated with existing recipe data
+"Update Recipe" button instead of "Save Recipe"
+"Cancel" button returns to recipe detail page
+
+
+Database Schema
+Tables
+recipes
+
+id (INT, PRIMARY KEY, AUTO_INCREMENT)
+name (VARCHAR(255), NOT NULL)
+photo_path (VARCHAR(500), NULLABLE)
+servings (VARCHAR(100), NULLABLE)
+created_at (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+updated_at (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)
+
+ingredients
+
+id (INT, PRIMARY KEY, AUTO_INCREMENT)
+recipe_id (INT, FOREIGN KEY → recipes.id, ON DELETE CASCADE)
+group_name (VARCHAR(100), NULLABLE) - for grouping ingredients
+name (VARCHAR(255), NOT NULL)
+amount (VARCHAR(100), NOT NULL) - free text like "1 cup", "100ml"
+is_optional (BOOLEAN, DEFAULT FALSE)
+order_index (INT, NOT NULL) - for ordering ingredients
+
+instructions
+
+id (INT, PRIMARY KEY, AUTO_INCREMENT)
+recipe_id (INT, FOREIGN KEY → recipes.id, ON DELETE CASCADE)
+step_number (INT, NOT NULL)
+description (TEXT, NOT NULL)
+
+notes
+
+id (INT, PRIMARY KEY, AUTO_INCREMENT)
+recipe_id (INT, FOREIGN KEY → recipes.id, ON DELETE CASCADE)
+name (VARCHAR(255), NOT NULL)
+text (TEXT, NOT NULL)
+created_at (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+
+tags
+
+id (INT, PRIMARY KEY, AUTO_INCREMENT)
+name (VARCHAR(100), UNIQUE, NOT NULL)
+
+recipe_tags (many-to-many relationship)
+
+recipe_id (INT, FOREIGN KEY → recipes.id, ON DELETE CASCADE)
+tag_id (INT, FOREIGN KEY → tags.id, ON DELETE CASCADE)
+PRIMARY KEY (recipe_id, tag_id)
+
+
+Data Validation
+Recipe Creation/Edit:
+
+Recipe name: Required, max 255 characters
+Photo: Optional, file types (jpg, jpeg, png, webp), max size 5MB
+Servings: Optional, max 100 characters
+At least one ingredient required
+At least one instruction step required
+Ingredient name: Required, max 255 characters
+Ingredient amount: Required, max 100 characters
+Instruction description: Required, cannot be empty
+Note name: Required if note is added, max 255 characters
+Note text: Required if note is added
+
+Tag Creation:
+
+Check if tag already exists (case-insensitive)
+If exists, use existing tag
+If not, create new tag
+Tag name: max 100 characters
+
+
+User Experience Features
+Confirmation Dialogs:
+
+Delete recipe: "Are you sure you want to delete this recipe? This action cannot be undone."
+Cancel during edit with unsaved changes (optional but recommended)
+
+Flash Messages:
+
+Success: "Recipe created successfully!"
+Success: "Recipe updated successfully!"
+Success: "Recipe deleted successfully!"
+Success: "Note added successfully!"
+Error: "Failed to upload photo. Please ensure it's under 5MB and in JPG, PNG, or WEBP format."
+Error: "Please add at least one ingredient and one instruction step."
+Error: "An error occurred. Please try again."
+
+Loading States:
+
+Show spinner during photo upload
+Show loading indicator during page transitions (optional)
+
+
+Technical Implementation Details
+Docker Compose Setup:
+Services:
+
+FastAPI app container
+
+Python 3.11+ base image
+Install dependencies: fastapi, uvicorn, jinja2, python-multipart, mysqlclient/pymysql, sqlalchemy
+Expose port 8000
+Volume mapping for uploaded images: ./uploads:/app/uploads
+Environment variables for MySQL connection
+
+
+MySQL container
+
+MySQL 8.0 image
+Volume mapping for persistence: ./mysql-data:/var/lib/mysql
+Environment variables: MYSQL_ROOT_PASSWORD, MYSQL_DATABASE
+Expose port 3306 (internal only)
+
+
+Network
+
+Create a bridge network for service communication
+
+
+
+Image Storage:
+
+Store uploaded images in /app/uploads/ inside the container
+Map to ./uploads/ on host (Raspberry Pi)
+Serve static files through FastAPI: app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+Store relative path in database (e.g., uploads/recipe_123.jpg)
+Default placeholder image: static/placeholder.jpg (create a simple placeholder image)
+
+Responsive Design:
+
+Use Bootstrap 5 grid system (col-sm, col-md, col-lg classes)
+Ensure recipe cards stack properly on mobile devices
+Make forms mobile-friendly with proper input types
+
+Database Backup:
+
+Document MySQL dump command for manual backups in README:
+
+bash  docker exec mysql-container mysqldump -u root -p recipe_db > backup.sql
+Concurrent Edits Handling:
+
+Use optimistic locking with updated_at timestamp
+When updating a recipe, check if updated_at matches the value when edit page was loaded
+If mismatch, show error: "This recipe was modified by another session. Please refresh and try again."
+Store updated_at in a hidden form field on edit page for comparison
+
+
+File Structure Suggestion
+recipe-manager/
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+├── README.md
+├── app/
+│   ├── main.py (FastAPI app)
+│   ├── models.py (SQLAlchemy models)
+│   ├── database.py (Database connection)
+│   ├── crud.py (Database operations)
+│   ├── schemas.py (Pydantic models)
+│   ├── templates/
+│   │   ├── base.html (Base template with navbar)
+│   │   ├── index.html (Main page)
+│   │   ├── recipe_detail.html
+│   │   ├── recipe_form.html (New/Edit recipe)
+│   │   └── components/
+│   │       ├── recipe_card.html
+│   │       └── pagination.html
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── custom.css
+│   │   ├── js/
+│   │   │   └── custom.js (dynamic forms)
+│   │   └── placeholder.jpg
+│   └── uploads/ (created by Docker volume)
+└── mysql-data/ (created by Docker volume)
+
+API Endpoints (FastAPI Routes)
+Pages (render templates):
+
+GET / - Main page with recipe grid
+GET /recipe/{id} - Recipe detail page
+GET /recipe/new - New recipe form
+GET /recipe/{id}/edit - Edit recipe form
+
+API Operations:
+
+POST /recipe/new - Create new recipe (handles form submission with file upload)
+POST /recipe/{id}/edit - Update recipe (handles form submission with file upload)
+POST /recipe/{id}/delete - Delete recipe
+POST /recipe/{id}/note - Add note to recipe
+GET /api/tags - Get all tags (for autocomplete)
+GET /api/search - Search/filter recipes (returns JSON for dynamic filtering)
+
+
+Bootstrap Components to Use
+
+Navbar: .navbar, .navbar-brand, .navbar-nav
+Cards: .card, .card-img-top, .card-body, .card-title
+Badges: .badge for tags
+Forms: .form-control, .form-label, .form-check (for checkboxes)
+Buttons: .btn, .btn-primary, .btn-secondary, .btn-danger
+Grid: .container, .row, .col-*
+Pagination: .pagination, .page-item, .page-link
+Alerts: .alert for flash messages
+Modal: .modal for confirmation dialogs
+
+
+Additional Notes
+
+No authentication required - app runs locally on Raspberry Pi
+Use Bootstrap's default styling, minimal custom CSS needed
+JavaScript for dynamic form elements (add/remove ingredients, steps, notes)
+Consider using Alpine.js or vanilla JavaScript for interactivity
+All forms use POST method with proper CSRF protection (FastAPI CSRF middleware)
+
+

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}{{ recipe.name }} - Recipe Manager{% endblock %}
+
+{% block content %}
+    <div class="row">
+        <div class="col-md-8">
+            <h1>{{ recipe.name }}</h1>
+            <div class="mb-3">
+                {% for recipe_tag in recipe.recipe_tags %}
+                    <a href="{{ url_for('view_recipes_by_tag', tag_name=recipe_tag.tag.name) }}" class="badge bg-secondary text-decoration-none">{{ recipe_tag.tag.name }}</a>
+                {% endfor %}
+            </div>
+            <p class="lead">Servings: {{ recipe.servings }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('edit_recipe', id=recipe.id) }}" class="btn btn-primary">Edit Recipe</a>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                Delete Recipe
+            </button>
+        </div>
+    </div>
+
+    <img src="{{ url_for('static', path=recipe.photo_path) if recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="img-fluid rounded mb-4" alt="{{ recipe.name }}">
+
+    <div class="row">
+        <div class="col-md-5">
+            <h3>Ingredients</h3>
+            {% set current_group = '' %}
+            <ul>
+                {% for ingredient in recipe.ingredients %}
+                    {% if ingredient.group_name and ingredient.group_name != current_group %}
+                        {% set current_group = ingredient.group_name %}
+                        <li style="list-style-type: none; margin-left: -1em;"><strong>{{ current_group }}</strong></li>
+                    {% endif %}
+                    <li>
+                        {{ ingredient.amount }} {{ ingredient.name }}
+                        {% if ingredient.is_optional %}<span class="text-muted">(optional)</span>{% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="col-md-7">
+            <h3>Instructions</h3>
+            <ol>
+                {% for instruction in recipe.instructions %}
+                    <li class="mb-2">{{ instruction.description }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+    </div>
+
+    {% if recipe.notes %}
+    <hr>
+    <h3>Notes</h3>
+    {% for note in recipe.notes %}
+        <figure>
+            <blockquote class="blockquote">
+                <p>{{ note.text }}</p>
+            </blockquote>
+            <figcaption class="blockquote-footer">
+                {{ note.name }}
+            </figcaption>
+        </figure>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Delete Recipe</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete the recipe "{{ recipe.name }}"? This action cannot be undone.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form action="{{ url_for('delete_recipe', id=recipe.id) }}" method="post">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

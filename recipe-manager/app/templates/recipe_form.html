@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Edit" if recipe else "New" }} Recipe - Recipe Manager{% endblock %}
+
+{% block content %}
+    <h1>{{ "Edit" if recipe else "New" }} Recipe</h1>
+    <form action="{{ url_for('create_recipe') if not recipe else url_for('edit_recipe', id=recipe.id) }}" method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="name" class="form-label">Recipe Name</label>
+            <input type="text" class="form-control" id="name" name="name" value="{{ recipe.name if recipe else '' }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="servings" class="form-label">Servings/Yield</label>
+            <input type="text" class="form-control" id="servings" name="servings" value="{{ recipe.servings if recipe else '' }}">
+        </div>
+        <div class="mb-3">
+            <label for="photo" class="form-label">Photo</label>
+            <input class="form-control" type="file" id="photo" name="photo" accept="image/*">
+            {% if recipe and recipe.photo_path %}
+                <img src="{{ url_for('static', path=recipe.photo_path) }}" class="img-fluid mt-2" style="max-height: 200px;" alt="Recipe Photo">
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label for="tags" class="form-label">Tags (comma-separated)</label>
+            <input type="text" class="form-control" id="tags" name="tags" value="{{ recipe.tags|map(attribute='name')|join(', ') if recipe else '' }}">
+        </div>
+
+        <hr>
+
+        <!-- Ingredients -->
+        <div id="ingredients-section">
+            <h3>Ingredients</h3>
+            <div id="ingredients-list">
+                <!-- Existing ingredients for editing -->
+                {% if recipe %}
+                    {% for ingredient in recipe.ingredients %}
+                        <div class="ingredient-item row mb-2">
+                            <div class="col-md-3"><input type="text" name="ingredient_group" class="form-control" placeholder="Group (e.g., 'For the dough')" value="{{ ingredient.group_name }}"></div>
+                            <div class="col-md-3"><input type="text" name="ingredient_name" class="form-control" placeholder="Ingredient Name" value="{{ ingredient.name }}" required></div>
+                            <div class="col-md-3"><input type="text" name="ingredient_amount" class="form-control" placeholder="Amount (e.g., '1 cup')" value="{{ ingredient.amount }}" required></div>
+                            <div class="col-md-2"><div class="form-check"><input class="form-check-input" type="checkbox" name="ingredient_optional" value="{{ loop.index0 }}" {% if ingredient.is_optional %}checked{% endif %}><label class="form-check-label">Optional</label></div></div>
+                            <div class="col-md-1"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <button type="button" id="add-ingredient" class="btn btn-secondary mt-2">Add Ingredient</button>
+        </div>
+
+        <hr>
+
+        <!-- Instructions -->
+        <div id="instructions-section">
+            <h3>Instructions</h3>
+            <div id="instructions-list">
+                <!-- Existing instructions for editing -->
+                {% if recipe %}
+                    {% for instruction in recipe.instructions %}
+                        <div class="instruction-item row mb-2">
+                            <div class="col-md-10"><textarea name="instruction_description" class="form-control" rows="2" required>{{ instruction.description }}</textarea></div>
+                            <div class="col-md-2"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <button type="button" id="add-instruction" class="btn btn-secondary mt-2">Add Instruction</button>
+        </div>
+
+        <hr>
+
+        <!-- Notes -->
+        <div id="notes-section">
+            <h3>Notes</h3>
+            <div id="notes-list">
+                <!-- Existing notes for editing -->
+                {% if recipe %}
+                    {% for note in recipe.notes %}
+                        <div class="note-item row mb-2">
+                            <div class="col-md-4"><input type="text" name="note_name" class="form-control" placeholder="Your Name" value="{{ note.name }}"></div>
+                            <div class="col-md-6"><textarea name="note_text" class="form-control" rows="2">{{ note.text }}</textarea></div>
+                            <div class="col-md-2"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <button type="button" id="add-note" class="btn btn-secondary mt-2">Add Note</button>
+        </div>
+
+        <hr>
+
+        <button type="submit" class="btn btn-primary">{{ "Update" if recipe else "Save" }} Recipe</button>
+        <a href="{{ url_for('read_root') if not recipe else url_for('recipe_detail', id=recipe.id) }}" class="btn btn-secondary">Cancel</a>
+    </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Add Ingredient
+    document.getElementById('add-ingredient').addEventListener('click', function () {
+        const list = document.getElementById('ingredients-list');
+        const newItem = document.createElement('div');
+        newItem.className = 'ingredient-item row mb-2';
+        newItem.innerHTML = `
+            <div class="col-md-3"><input type="text" name="ingredient_group" class="form-control" placeholder="Group (e.g., 'For the dough')"></div>
+            <div class="col-md-3"><input type="text" name="ingredient_name" class="form-control" placeholder="Ingredient Name" required></div>
+            <div class="col-md-3"><input type="text" name="ingredient_amount" class="form-control" placeholder="Amount (e.g., '1 cup')" required></div>
+            <div class="col-md-2"><div class="form-check"><input class="form-check-input" type="checkbox" name="ingredient_optional" value="${list.children.length}"><label class="form-check-label">Optional</label></div></div>
+            <div class="col-md-1"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+        `;
+        list.appendChild(newItem);
+    });
+
+    // Add Instruction
+    document.getElementById('add-instruction').addEventListener('click', function () {
+        const list = document.getElementById('instructions-list');
+        const newItem = document.createElement('div');
+        newItem.className = 'instruction-item row mb-2';
+        newItem.innerHTML = `
+            <div class="col-md-10"><textarea name="instruction_description" class="form-control" rows="2" required></textarea></div>
+            <div class="col-md-2"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+        `;
+        list.appendChild(newItem);
+    });
+
+    // Add Note
+    document.getElementById('add-note').addEventListener('click', function () {
+        const list = document.getElementById('notes-list');
+        const newItem = document.createElement('div');
+        newItem.className = 'note-item row mb-2';
+        newItem.innerHTML = `
+            <div class="col-md-4"><input type="text" name="note_name" class="form-control" placeholder="Your Name"></div>
+            <div class="col-md-6"><textarea name="note_text" class="form-control" rows="2"></textarea></div>
+            <div class="col-md-2"><button type="button" class="btn btn-danger btn-sm remove-item">Remove</button></div>
+        `;
+        list.appendChild(newItem);
+    });
+
+    // Remove Item (delegated event)
+    document.addEventListener('click', function (e) {
+        if (e.target && e.target.classList.contains('remove-item')) {
+            e.target.closest('.row').remove();
+        }
+    });
+});
+</script>
+{% endblock %}
