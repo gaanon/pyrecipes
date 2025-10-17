@@ -1,0 +1,68 @@
+<div class="planner-panel" id="planner-panel">
+    <div class="planner-header">
+        <h4>Meal Planner</h4>
+        <div class="week-navigation">
+            <button class="btn btn-sm btn-outline-secondary" id="prev-week-btn">< Prev</button>
+            <span id="week-display">This Week</span>
+            <button class="btn btn-sm btn-outline-secondary" id="next-week-btn">Next ></button>
+        </div>
+    </div>
+    <div class="planner-body">
+        <ul class="list-group" id="planner-days-list">
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-17">
+                <span>
+                    <small class="text-muted">FRI</small>
+                    <strong>17</strong>
+                </span>
+                <span class="badge bg-primary rounded-pill">3</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-18">
+                <span>
+                    <small class="text-muted">SAT</small>
+                    <strong>18</strong>
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-19">
+                <span>
+                    <small class="text-muted">SUN</small>
+                    <strong>19</strong>
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-20">
+                <span>
+                    <small class="text-muted">MON</small>
+                    <strong>20</strong>
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-21">
+                <span>
+                    <small class="text-muted">TUE</small>
+                    <strong>21</strong>
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-22">
+                <span>
+                    <small class="text-muted">WED</small>
+                    <strong>22</strong>
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-date="2025-10-23">
+                <span>
+                    <small class="text-muted">THU</small>
+                    <strong>23</strong>
+                </span>
+            </li>
+        </ul>
+        <hr>
+        <h5>Meals for <span id="selected-day-display">Today</span></h5>
+        <ul class="list-group" id="planner-meals-list">
+            <!-- Meals will be populated by JavaScript -->
+        </ul>
+        <div class="add-custom-meal-form mt-3">
+            <div class="input-group">
+                <input type="text" class="form-control" id="custom-meal-name" placeholder="Add custom meal...">
+                <button class="btn btn-primary" id="add-custom-meal-btn">+</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,3 +1,4 @@
+import datetime
 from sqlalchemy.orm import Session
 from . import models, schemas
 
@@ -109,3 +110,20 @@ def delete_recipe(db: Session, recipe_id: int):
         db.delete(db_recipe)
         db.commit()
     return db_recipe
+
+def get_meal_plans(db: Session, start_date: datetime.date, end_date: datetime.date):
+    return db.query(models.MealPlan).filter(models.MealPlan.plan_date.between(start_date, end_date)).all()
+
+def create_meal_plan(db: Session, meal_plan: schemas.MealPlanCreate):
+    db_meal_plan = models.MealPlan(**meal_plan.dict())
+    db.add(db_meal_plan)
+    db.commit()
+    db.refresh(db_meal_plan)
+    return db_meal_plan
+
+def delete_meal_plan(db: Session, meal_plan_id: int):
+    db_meal_plan = db.query(models.MealPlan).filter(models.MealPlan.id == meal_plan_id).first()
+    if db_meal_plan:
+        db.delete(db_meal_plan)
+        db.commit()
+    return db_meal_plan

@@ -1,5 +1,6 @@
 <div class="col">
-    <div class="card h-100">
+    <div class="card h-100 recipe-card">
+        <button class="btn btn-sm btn-primary add-to-planner-btn" data-recipe-id="{{ recipe.id }}">+</button>
         <a href="{{ url_for('recipe_detail', id=recipe.id) }}" class="text-decoration-none text-dark">
             <img src="{{ url_for('static', path=recipe.photo_path) if recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="card-img-top" alt="{{ recipe.name }}">
             <div class="card-body">

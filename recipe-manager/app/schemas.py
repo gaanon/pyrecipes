@@ -60,6 +60,7 @@ class Tag(TagBase):
     class Config:
         orm_mode = True
 
+# Define Recipe schemas BEFORE MealPlan schemas that depend on it
 class RecipeBase(BaseModel):
     name: str
     servings: Optional[str] = None
@@ -78,7 +79,27 @@ class Recipe(RecipeBase):
     ingredients: List[Ingredient] = []
     instructions: List[Instruction] = []
     notes: List[Note] = []
-    tags: List[Tag] = []
+    tags: List["Tag"] = [] # Use forward reference for robustness
 
     class Config:
         orm_mode = True
+
+# Now define MealPlan schemas
+class MealPlanBase(BaseModel):
+    plan_date: datetime.date
+    recipe_id: Optional[int] = None
+    custom_meal_name: Optional[str] = None
+
+class MealPlanCreate(MealPlanBase):
+    pass
+
+class MealPlan(MealPlanBase):
+    id: int
+    recipe: Optional["Recipe"] = None
+
+    class Config:
+        orm_mode = True
+
+# Update forward references at the end of the file
+Recipe.update_forward_refs()
+MealPlan.update_forward_refs()

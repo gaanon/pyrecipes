@@ -70,3 +70,13 @@ class RecipeTag(Base):
 
     recipe = relationship("Recipe", back_populates="recipe_tags")
     tag = relationship("Tag", back_populates="recipe_tags")
+
+class MealPlan(Base):
+    __tablename__ = "meal_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_date = Column(DateTime, nullable=False)
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=True)
+    custom_meal_name = Column(String(255), nullable=True)
+
+    recipe = relationship("Recipe")

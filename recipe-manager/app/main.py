@@ -1,11 +1,20 @@
 from fastapi import FastAPI, Depends, Request
+from typing import List
+import datetime
+from contextlib import asynccontextmanager
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from . import models, database, schemas
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create the database tables on startup
+    models.Base.metadata.create_all(bind=database.engine)
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -176,6 +185,23 @@ async def delete_recipe(request: Request, id: int, db: Session = Depends(get_db)
     from . import crud
     crud.delete_recipe(db=db, recipe_id=id)
     return RedirectResponse(url="/", status_code=303)
+
+# API endpoints for Meal Planner
+@app.get("/api/meal-plan", response_model=List[schemas.MealPlan])
+def get_meal_plan_for_week(start_date: datetime.date, end_date: datetime.date, db: Session = Depends(get_db)):
+    from . import crud
+    return crud.get_meal_plans(db, start_date=start_date, end_date=end_date)
+
+@app.post("/api/meal-plan", response_model=schemas.MealPlan)
+def add_meal_to_plan(meal_plan: schemas.MealPlanCreate, db: Session = Depends(get_db)):
+    from . import crud
+    return crud.create_meal_plan(db=db, meal_plan=meal_plan)
+
+@app.delete("/api/meal-plan/{meal_plan_id}")
+def delete_meal_from_plan(meal_plan_id: int, db: Session = Depends(get_db)):
+    from . import crud
+    crud.delete_meal_plan(db=db, meal_plan_id=meal_plan_id)
+    return {"ok": True}
 
 @app.get("/tag/{tag_name}", response_class=HTMLResponse)
 async def view_recipes_by_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):
