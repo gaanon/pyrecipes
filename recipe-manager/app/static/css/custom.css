@@ -122,3 +122,7 @@ body.planner-open .content-container {
 #modal-days-container .day:hover {
     background-color: #f0f0f0;
 }
+
+.day.today, .list-group-item.today {
+    background-color: var(--background-color);
+}

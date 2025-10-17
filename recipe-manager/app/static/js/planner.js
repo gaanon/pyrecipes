@@ -75,10 +75,17 @@ document.addEventListener('DOMContentLoaded', function () {
             const day = new Date(startDate);
             day.setDate(day.getDate() + i);
             const dayStr = formatDate(day);
+            const todayStr = formatDate(new Date());
+
             const mealsForDay = weekData.filter(meal => meal.plan_date === dayStr);
             const li = document.createElement('li');
             li.className = 'list-group-item d-flex justify-content-between align-items-center';
             li.dataset.date = dayStr;
+
+            if (dayStr === todayStr) {
+                li.classList.add('today');
+            }
+
             let content = `<span><small class="text-muted">${day.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</small> <strong>${day.getDate()}</strong></span>`;
             if (mealsForDay.length > 0) {
                 content += `<span class="badge bg-primary rounded-pill">${mealsForDay.length}</span>`;
@@ -127,12 +134,22 @@ document.addEventListener('DOMContentLoaded', function () {
             const day = new Date(start);
             day.setDate(day.getDate() + i);
             const dayStr = formatDate(day);
+            const todayStr = formatDate(new Date());
+
             const dayDiv = document.createElement('div');
             dayDiv.className = 'col';
-            dayDiv.innerHTML = `<div class="day p-2" data-date="${dayStr}">
-                                    <div>${day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                                    <strong>${day.getDate()}</strong>
-                                </div>`;
+            
+            const dayContentDiv = document.createElement('div');
+            dayContentDiv.className = 'day p-2';
+            dayContentDiv.dataset.date = dayStr;
+            if (dayStr === todayStr) {
+                dayContentDiv.classList.add('today');
+            }
+
+            dayContentDiv.innerHTML = `<div>${day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                                     <strong>${day.getDate()}</strong>`;
+            
+            dayDiv.appendChild(dayContentDiv);
             dayDiv.addEventListener('click', () => addRecipeToPlan(dayStr));
             modalDaysContainer.appendChild(dayDiv);
         }
