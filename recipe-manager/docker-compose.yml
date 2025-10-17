@@ -9,6 +9,8 @@ services:
       - ./app:/code/app
       - ./app/static:/code/app/static
       - ./uploads:/code/uploads
+      - ./import_recipes.py:/code/import_recipes.py
+      - ../gorecipes_export.json:/code/gorecipes_export.json
     depends_on:
       db:
         condition: service_healthy
