@@ -1,83 +1,59 @@
-# Recipe Manager Backup Guide
+# Recipe Manager Backup & Restore Guide
 
-This guide provides instructions for backing up the Recipe Manager application data.
+This guide provides the definitive instructions for backing up and restoring the Recipe Manager application data.
 
-## 1. Database Backup
+## 1. Automated Backup
 
-To create a full backup of the application database, you can use the `mysqldump` utility. This command should be run from within the `recipe-manager` directory.
+A single, self-contained script, `backup_app.py`, handles the entire backup process. It runs entirely within the application's container, making it robust and reliable across different environments.
 
+The script will create a timestamped directory inside the `recipe-manager/backups` folder and save three files:
+- `recipes_export.json`: A JSON export of all your recipes.
+- `database_backup.sql`: A complete SQL dump of your database.
+- `image_backup.tar.gz`: A compressed archive of all your uploaded images.
+
+### To run the backup:
+Execute the following command from the `recipe-manager` directory:
 ```bash
-docker-compose exec -T db mysqldump -u user -ppassword recipe_db > database_backup.sql
+docker-compose exec app python backup_app.py
 ```
 
-This command will create a file named `database_backup.sql` in the `recipe-manager` directory, containing a complete snapshot of your database.
+## 2. Restore Process
 
-## 2. Image Backup
+### Restore the Database
+To restore the database from a SQL dump, run the following command from the `recipe-manager` directory. Replace the path with the correct path to your backup file.
 
-The recipe images are stored in the `recipe-manager/app/static/uploads` directory. To back them up, you can create a compressed archive of this folder.
-
+**Example:**
 ```bash
-tar -czvf image_backup.tar.gz -C recipe-manager/app/static/uploads .
+docker-compose exec -T db mysql -u user -ppassword recipe_db < backups/2025-10-20_12-08-54/database_backup.sql
 ```
 
-This command will create a file named `image_backup.tar.gz` in the current directory, containing all the uploaded images.
+### Restore the Images
+To restore your uploaded images, extract the `image_backup.tar.gz` archive into the correct directory.
 
-## 3. Automated Backup Script
-
-A comprehensive backup script, `backup.sh`, is provided to automate the entire backup process. This script will create a timestamped directory in the `backups` folder and save the JSON export, database dump, and image archive.
-
-To run the script, execute the following command from the `recipe-manager` directory:
-
+**Example:**
 ```bash
-./backup.sh
+tar -xzvf backups/2025-10-20_12-08-54/image_backup.tar.gz -C app/static/uploads
 ```
 
-## 4. Schedule Daily Backups
+### Restore Recipes from JSON
+To restore recipes from a JSON file (which will update existing recipes and create new ones), use the `import_recipes.py` script.
 
-To ensure your data is backed up regularly, you can schedule the `backup.sh` script to run automatically every day using a cron job.
+**Example:**
+```bash
+docker-compose exec app python import_recipes.py backups/2025-10-20_12-08-54/recipes_export.json
+```
 
-1.  Open your crontab file for editing:
+## 3. Schedule Daily Backups
 
+To automate the backup process, you can schedule the `backup_app.py` script to run daily using a cron job.
+
+1.  Open your crontab for editing:
     ```bash
     crontab -e
     ```
 
-2.  Add the following line to the file, making sure to replace `/path/to/your/recipe-manager` with the absolute path to your `recipe-manager` directory:
-
+2.  Add the following line, making sure to replace `/path/to/your/recipe-manager` with the absolute path to your `recipe-manager` directory:
     ```bash
-    0 2 * * * /path/to/your/recipe-manager/backup.sh
+    0 2 * * * cd /path/to/your/recipe-manager && docker-compose exec app python backup_app.py
     ```
-
-This will schedule the backup script to run every day at 2:00 AM.
-
-# Restore Process
-
-This guide provides instructions for restoring the Recipe Manager application data from a backup.
-
-## 1. Restore the Database
-
-To restore the database from a SQL dump, you can use the `mysql` client. This command should be run from within the `recipe-manager` directory, and you should replace `database_backup.sql` with the path to your backup file.
-
-```bash
-docker-compose exec -T db mysql -u user -ppassword recipe_db < database_backup.sql
-```
-
-## 2. Restore the Images
-
-To restore the images, you'll need to extract the `image_backup.tar.gz` archive into the `recipe-manager/app/static/uploads` directory.
-
-```bash
-tar -xzvf image_backup.tar.gz -C recipe-manager/app/static/uploads
-```
-
-## 3. Import Recipes from JSON
-
-If you need to restore the recipes from a JSON export, you can use the `import_recipes.py` script. This script will update existing recipes and create new ones as needed.
-
-Run the following command from the `recipe-manager` directory, replacing `path/to/your/recipes_export.json` with the actual path to your JSON backup file.
-
-**Example:**
-
-```bash
-docker-compose exec app python import_recipes.py backups/2025-10-20_10-52-22/recipes_export.json
-```
+This will run the backup every day at 2:00 AM.

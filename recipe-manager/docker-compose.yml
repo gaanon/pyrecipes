@@ -10,8 +10,8 @@ services:
       - ./app/static:/code/app/static
       - ./uploads:/code/uploads
       - ./import_recipes.py:/code/import_recipes.py
-      - ./export_recipes.py:/code/export_recipes.py
       - ./backups:/code/backups
+      - ./backup_app.py:/code/backup_app.py
       - ../gorecipes_export.json:/code/gorecipes_export.json
     depends_on:
       db:
