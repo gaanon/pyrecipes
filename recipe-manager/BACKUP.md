@@ -12,9 +12,16 @@ The script will create a timestamped directory inside the `recipe-manager/backup
 - `image_backup.tar.gz`: A compressed archive of all your uploaded images.
 
 ### To run the backup:
-Execute the following command from the `recipe-manager` directory:
+Execute the following command from the `recipe-manager` directory.
+
+To run a single backup without deleting old ones:
 ```bash
 docker-compose exec app python backup_app.py
+```
+
+To run a backup and keep only the last 7 days of backups:
+```bash
+docker-compose exec app python backup_app.py --days-to-keep 7
 ```
 
 ## 2. Restore Process
@@ -54,6 +61,30 @@ To automate the backup process, you can schedule the `backup_app.py` script to r
 
 2.  Add the following line, making sure to replace `/path/to/your/recipe-manager` with the absolute path to your `recipe-manager` directory:
     ```bash
-    0 2 * * * cd /path/to/your/recipe-manager && docker-compose exec app python backup_app.py
+    0 2 * * * cd /path/to/your/recipe-manager && docker-compose exec app python backup_app.py --days-to-keep 7
     ```
 This will run the backup every day at 2:00 AM.
+
+## 4. Deploying Changes
+
+When you pull new changes from version control, you may need to rebuild the Docker images to ensure all updates are applied correctly. This is especially important if the `Dockerfile` has been modified.
+
+Use the following commands from the `recipe-manager` directory on your Raspberry Pi to deploy the latest version:
+
+1.  **Get the latest code:**
+    ```bash
+    # Example using git
+    git pull
+    ```
+
+2.  **Rebuild the Docker images:**
+    This command reads the `Dockerfile` and builds a new `app` image with all the correct tools and dependencies.
+    ```bash
+    docker-compose build
+    ```
+
+3.  **Restart the services:**
+    This command will stop, recreate, and start your application containers using the newly built image and the latest `docker-compose.yml` configuration.
+    ```bash
+    docker-compose up -d
+    ```
