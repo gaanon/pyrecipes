@@ -108,17 +108,48 @@ def rotate_backups(backup_base_dir, days_to_keep):
     print("Backup rotation complete.")
 
 
+def rotate_gdrive_backups(remote_path, days_to_keep):
+    """Removes backup directories from Google Drive older than a specified number of days."""
+    if days_to_keep <= 0:
+        return
+
+    print(f"\nRotating Google Drive backups. Keeping the last {days_to_keep} days...")
+    if not remote_path:
+        print("Warning: Google Drive remote path not configured. Skipping rotation.")
+        return
+
+    min_age = f"{days_to_keep}d"
+    # Delete files older than min_age, then remove the resulting empty directories.
+    delete_command = ["rclone", "delete", remote_path, "--min-age", min_age]
+    rmdirs_command = ["rclone", "rmdirs", remote_path]
+
+    try:
+        print(f"Deleting files older than {days_to_keep} days from {remote_path}...")
+        subprocess.run(delete_command, check=True, capture_output=True, text=True)
+        print("Deleting empty backup directories from Google Drive...")
+        subprocess.run(rmdirs_command, check=True, capture_output=True, text=True)
+        print("Google Drive backup rotation complete.")
+    except subprocess.CalledProcessError as e:
+        # Don't exit on rotation failure, just warn the user.
+        print(f"Warning: Error during Google Drive backup rotation: {e.stderr}")
+
+
 def upload_to_gdrive(source_path, remote_path):
-    """Uploads a directory to Google Drive using rclone."""
+    """Uploads a directory to Google Drive using rclone, preserving the source directory structure."""
     print("\nUploading backup to Google Drive...")
     if not remote_path:
         print("Warning: Google Drive remote path not configured. Skipping upload.")
         return
 
-    command = ["rclone", "copy", source_path, remote_path, "--create-empty-src-dirs"]
+    # Append the backup directory name to the remote path to keep the timestamped structure
+    backup_dirname = os.path.basename(source_path)
+    # rclone uses forward slashes for paths
+    full_remote_path = remote_path.rstrip('/') + '/' + backup_dirname
+
+    command = ["rclone", "copy", source_path, full_remote_path, "--create-empty-src-dirs"]
     try:
         subprocess.run(command, check=True, capture_output=True, text=True)
-        print(f"Successfully uploaded backup to {remote_path}")
+        print(f"Successfully uploaded backup to {full_remote_path}")
     except subprocess.CalledProcessError as e:
         print(f"Error uploading to Google Drive: {e.stderr}")
         sys.exit(1)
@@ -153,6 +184,8 @@ def main(days_to_keep, gdrive_remote):
 
         if days_to_keep:
             rotate_backups(backup_base_dir, days_to_keep)
+            if gdrive_remote:
+                rotate_gdrive_backups(gdrive_remote, days_to_keep)
 
     except Exception as e:
         print(f"\nAn error occurred during the backup process: {e}")
