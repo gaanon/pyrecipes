@@ -15,6 +15,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      - PYTHONPATH=/code
       - DATABASE_URL=mysql+pymysql://user:password@db/recipe_db
 
   db:
