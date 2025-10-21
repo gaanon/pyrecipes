@@ -146,12 +146,14 @@ def upload_to_gdrive(source_path, remote_path):
     # rclone uses forward slashes for paths
     full_remote_path = remote_path.rstrip('/') + '/' + backup_dirname
 
-    command = ["rclone", "copy", source_path, full_remote_path, "--create-empty-src-dirs"]
+    # Use `rclone sync` to efficiently update the remote.
+    # This command mirrors the source directory to the destination, creating the timestamped folder on the remote.
+    command = ["rclone", "sync", source_path, full_remote_path, "--create-empty-src-dirs"]
     try:
         subprocess.run(command, check=True, capture_output=True, text=True)
-        print(f"Successfully uploaded backup to {full_remote_path}")
+        print(f"Successfully synced backup to {full_remote_path}")
     except subprocess.CalledProcessError as e:
-        print(f"Error uploading to Google Drive: {e.stderr}")
+        print(f"Error syncing to Google Drive: {e.stderr}")
         sys.exit(1)
 
 
