@@ -4,6 +4,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ~/.config/rclone:/root/.config/rclone
       - ./app:/code/app
       - ./app/static:/code/app/static
       - ./uploads:/code/uploads
