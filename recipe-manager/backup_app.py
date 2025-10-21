@@ -107,7 +107,24 @@ def rotate_backups(backup_base_dir, days_to_keep):
             continue
     print("Backup rotation complete.")
 
-def main(days_to_keep):
+
+def upload_to_gdrive(source_path, remote_path):
+    """Uploads a directory to Google Drive using rclone."""
+    print("\nUploading backup to Google Drive...")
+    if not remote_path:
+        print("Warning: Google Drive remote path not configured. Skipping upload.")
+        return
+
+    command = ["rclone", "copy", source_path, remote_path, "--create-empty-src-dirs"]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        print(f"Successfully uploaded backup to {remote_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error uploading to Google Drive: {e.stderr}")
+        sys.exit(1)
+
+
+def main(days_to_keep, gdrive_remote):
     """Main function to run the backup and rotation process."""
     backup_base_dir = "/code/backups"
     backup_dir = os.path.join(backup_base_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -131,6 +148,9 @@ def main(days_to_keep):
         print("\nBackup process completed successfully!")
         print(f"All backup files are located in: {backup_dir}")
 
+        if gdrive_remote:
+            upload_to_gdrive(backup_dir, gdrive_remote)
+
         if days_to_keep:
             rotate_backups(backup_base_dir, days_to_keep)
 
@@ -151,5 +171,11 @@ if __name__ == "__main__":
         default=0,
         help="The number of days to keep backups. Older backups will be deleted. Set to 0 to keep all backups."
     )
+    parser.add_argument(
+        "--gdrive-remote",
+        type=str,
+        default="",
+        help="The rclone remote path for Google Drive backup (e.g., gdrive:backups)."
+    )
     args = parser.parse_args()
-    main(args.days_to_keep)
+    main(args.days_to_keep, args.gdrive_remote)

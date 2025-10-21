@@ -141,4 +141,7 @@ mysql-data/
 backup.sql
 
 # Uploads
-app/static/uploads/
+recipe-manager/app/static/uploads/
+
+# Backups
+recipe-manager/backups/
