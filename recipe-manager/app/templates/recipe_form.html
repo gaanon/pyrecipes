@@ -5,12 +5,28 @@
 {% block content %}
 <div class="container" style="max-width: 960px;">
     <h1>{{ "Edit" if recipe else "New" }} Recipe</h1>
-    <form action="{{ url_for('create_recipe') if not recipe else url_for('edit_recipe', id=recipe.id) }}" method="post" enctype="multipart/form-data" class="p-4 border rounded-3 bg-light">
-        <div class="row g-3">
+    <div class="p-4 border rounded-3 bg-light">
+        <!-- AI Uploader -->
+        <div class="row g-3 mb-4">
             <div class="col-12">
-                <label for="name" class="form-label">Recipe Name</label>
-                <input type="text" class="form-control" id="name" name="name" value="{{ recipe.name if recipe else '' }}" required>
+                <label for="ai-photo" class="form-label"><strong>AI Recipe Scanner</strong></label>
+                <div class="input-group">
+                    <input class="form-control" type="file" id="ai-photo" accept="image/*">
+                    <button class="btn btn-primary" type="button" id="process-ai-btn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Scan Recipe Image
+                    </button>
+                </div>
+                <div class="form-text">Upload a photo of a recipe, and the AI will try to fill in the form for you.</div>
             </div>
+        </div>
+
+        <form id="recipe-form" action="{{ url_for('create_recipe') if not recipe else url_for('edit_recipe', id=recipe.id) }}" method="post" enctype="multipart/form-data">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label for="name" class="form-label">Recipe Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ recipe.name if recipe else '' }}" required>
+                </div>
             <div class="col-md-6">
                 <label for="servings" class="form-label">Servings/Yield</label>
                 <input type="text" class="form-control" id="servings" name="servings" value="{{ recipe.servings if recipe else '' }}">
@@ -94,56 +110,166 @@
         <button type="submit" class="btn btn-primary btn-lg">{{ "Update" if recipe else "Save" }} Recipe</button>
         <a href="{{ url_for('read_root') if not recipe else url_for('recipe_detail', id=recipe.id) }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
     </form>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Add Ingredient
-    document.getElementById('add-ingredient').addEventListener('click', function () {
-        const list = document.getElementById('ingredients-list');
+    const addIngredientBtn = document.getElementById('add-ingredient');
+    const addInstructionBtn = document.getElementById('add-instruction');
+    const addNoteBtn = document.getElementById('add-note');
+    const ingredientsList = document.getElementById('ingredients-list');
+    const instructionsList = document.getElementById('instructions-list');
+    const notesList = document.getElementById('notes-list');
+    const recipeForm = document.getElementById('recipe-form');
+    const processAiBtn = document.getElementById('process-ai-btn');
+    const aiPhotoInput = document.getElementById('ai-photo');
+
+    function addIngredient(ingredient = {}) {
         const newItem = document.createElement('div');
         newItem.className = 'ingredient-item row mb-2 g-2 align-items-center';
         newItem.innerHTML = `
-            <div class="col-md-3"><input type="text" name="ingredient_group" class="form-control" placeholder="Group (e.g., 'For the dough')"></div>
-            <div class="col-md-3"><input type="text" name="ingredient_name" class="form-control" placeholder="Ingredient Name" required></div>
-            <div class="col-md-3"><input type="text" name="ingredient_amount" class="form-control" placeholder="Amount (e.g., '1 cup')" required></div>
-            <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" name="ingredient_optional" value="${list.children.length}"><label class="form-check-label">Optional</label></div></div>
+            <div class="col-md-3"><input type="text" name="ingredient_group" class="form-control" placeholder="Group" value="${ingredient.group_name || ''}"></div>
+            <div class="col-md-3"><input type="text" name="ingredient_name" class="form-control" placeholder="Ingredient Name" value="${ingredient.name || ''}" required></div>
+            <div class="col-md-3"><input type="text" name="ingredient_amount" class="form-control" placeholder="Amount" value="${ingredient.amount || ''}" required></div>
+            <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" name="ingredient_optional" value="${ingredientsList.children.length}" ${ingredient.is_optional ? 'checked' : ''}><label class="form-check-label">Optional</label></div></div>
             <div class="col-auto"><button type="button" class="btn btn-danger btn-sm remove-item">X</button></div>
         `;
-        list.appendChild(newItem);
-    });
+        ingredientsList.appendChild(newItem);
+    }
 
-    // Add Instruction
-    document.getElementById('add-instruction').addEventListener('click', function () {
-        const list = document.getElementById('instructions-list');
+    function addInstruction(instruction = {}) {
         const newItem = document.createElement('div');
         newItem.className = 'instruction-item row mb-2 g-2 align-items-center';
         newItem.innerHTML = `
-            <div class="col"><textarea name="instruction_description" class="form-control" rows="2" required></textarea></div>
+            <div class="col"><textarea name="instruction_description" class="form-control" rows="2" required>${instruction.description || ''}</textarea></div>
             <div class="col-auto"><button type="button" class="btn btn-danger btn-sm remove-item">X</button></div>
         `;
-        list.appendChild(newItem);
-    });
+        instructionsList.appendChild(newItem);
+    }
 
-    // Add Note
-    document.getElementById('add-note').addEventListener('click', function () {
-        const list = document.getElementById('notes-list');
+    function addNote(note = {}) {
         const newItem = document.createElement('div');
         newItem.className = 'note-item row mb-2 g-2 align-items-center';
         newItem.innerHTML = `
-            <div class="col-md-4"><input type="text" name="note_name" class="form-control" placeholder="Your Name"></div>
-            <div class="col"><textarea name="note_text" class="form-control" rows="2"></textarea></div>
+            <div class="col-md-4"><input type="text" name="note_name" class="form-control" placeholder="Note Title" value="${note.name || ''}"></div>
+            <div class="col"><textarea name="note_text" class="form-control" rows="2">${note.text || ''}</textarea></div>
             <div class="col-auto"><button type="button" class="btn btn-danger btn-sm remove-item">X</button></div>
         `;
-        list.appendChild(newItem);
-    });
+        notesList.appendChild(newItem);
+    }
 
-    // Remove Item (delegated event)
+    addIngredientBtn.addEventListener('click', () => addIngredient());
+    addInstructionBtn.addEventListener('click', () => addInstruction());
+    addNoteBtn.addEventListener('click', () => addNote());
+
     document.addEventListener('click', function (e) {
         if (e.target && e.target.classList.contains('remove-item')) {
             e.target.closest('.row').remove();
+        }
+    });
+
+    processAiBtn.addEventListener('click', async function() {
+        const file = aiPhotoInput.files[0];
+        if (!file) {
+            alert("Please select an image file first.");
+            return;
+        }
+
+        const spinner = this.querySelector('.spinner-border');
+        spinner.classList.remove('d-none');
+        this.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/process-recipe-image', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to process image. Status: ' + response.status);
+            }
+
+            const data = await response.json();
+            
+            // Clear existing dynamic fields
+            ingredientsList.innerHTML = '';
+            instructionsList.innerHTML = '';
+            notesList.innerHTML = '';
+
+            // Populate form with AI data
+            document.getElementById('name').value = data.name || '';
+            document.getElementById('servings').value = data.servings || '';
+            document.getElementById('tags').value = (data.tags || []).join(', ');
+
+            (data.ingredients || []).forEach(addIngredient);
+            (data.instructions || []).forEach(addInstruction);
+            (data.notes || []).forEach(addNote);
+
+        } catch (error) {
+            console.error("AI processing error:", error);
+            alert("An error occurred while processing the recipe image.");
+        } finally {
+            spinner.classList.add('d-none');
+            this.disabled = false;
+        }
+    });
+
+    recipeForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const ingredients = Array.from(document.querySelectorAll('.ingredient-item')).map((item, index) => ({
+            group_name: item.querySelector('[name=ingredient_group]').value,
+            name: item.querySelector('[name=ingredient_name]').value,
+            amount: item.querySelector('[name=ingredient_amount]').value,
+            is_optional: item.querySelector('[name=ingredient_optional]').checked,
+            order_index: index
+        }));
+
+        const instructions = Array.from(document.querySelectorAll('.instruction-item')).map((item, index) => ({
+            step_number: index + 1,
+            description: item.querySelector('[name=instruction_description]').value
+        }));
+
+        const notes = Array.from(document.querySelectorAll('.note-item')).map(item => ({
+            name: item.querySelector('[name=note_name]').value,
+            text: item.querySelector('[name=note_text]').value
+        })).filter(note => note.name && note.text);
+
+        const recipeData = {
+            name: document.getElementById('name').value,
+            servings: document.getElementById('servings').value,
+            tags: document.getElementById('tags').value.split(',').map(t => t.trim()).filter(t => t),
+            ingredients,
+            instructions,
+            notes
+        };
+
+        const url = this.action;
+        const method = '{{ "POST" if not recipe else "POST" }}'; // Always POST for our new API
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(recipeData)
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save recipe. Status: ' + response.status);
+            }
+
+            const result = await response.json();
+            window.location.href = `/recipe/${result.id}`;
+
+        } catch (error) {
+            console.error("Save recipe error:", error);
+            alert("An error occurred while saving the recipe.");
         }
     });
 });

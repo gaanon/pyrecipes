@@ -6,3 +6,4 @@ pymysql
 SQLAlchemy
 pydantic
 cryptography
+openai

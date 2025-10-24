@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, File, UploadFile
 from typing import List
 import datetime
 from contextlib import asynccontextmanager
@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from . import models, database, schemas
+from . import models, database, schemas, ai_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +40,11 @@ async def read_root(request: Request, db: Session = Depends(get_db), search: str
         recipes = crud.get_recipes(db=db)
     return templates.TemplateResponse("index.html", {"request": request, "recipes": recipes, "search": search})
 
+@app.post("/api/process-recipe-image", response_model=schemas.RecipeCreate)
+async def process_recipe_image(file: UploadFile = File(...)):
+    recipe_data = await ai_service.extract_recipe_from_image(file)
+    return recipe_data
+
 @app.get("/recipe/new", response_class=HTMLResponse)
 async def new_recipe_form(request: Request):
     return templates.TemplateResponse("recipe_form.html", {"request": request, "recipe": None})
@@ -50,67 +55,11 @@ async def recipe_detail(request: Request, id: int, db: Session = Depends(get_db)
     recipe = crud.get_recipe(db, recipe_id=id)
     return templates.TemplateResponse("recipe_detail.html", {"request": request, "recipe": recipe})
 
-@app.post("/recipe/new", response_class=HTMLResponse)
-async def create_recipe(request: Request, db: Session = Depends(get_db)):
-    form = await request.form()
-    
-    # Handle file upload
-    photo_path = None
-    photo = form.get("photo")
-    if photo and photo.filename:
-        # You would add logic here to save the file and get the path
-        # For now, we'll just simulate it
-        photo_path = f"uploads/{photo.filename}"
-        with open(f"app/static/{photo_path}", "wb") as buffer:
-            buffer.write(await photo.read())
-
-    # Create recipe schema
-    # Process ingredients manually
-    ingredients = []
-    ingredient_names = form.getlist("ingredient_name")
-    ingredient_groups = form.getlist("ingredient_group")
-    ingredient_amounts = form.getlist("ingredient_amount")
-    ingredient_optionals = form.getlist("ingredient_optional")
-
-    for i, name in enumerate(ingredient_names):
-        ingredients.append(schemas.IngredientCreate(
-            group_name=ingredient_groups[i],
-            name=name,
-            amount=ingredient_amounts[i],
-            is_optional=str(i) in ingredient_optionals,
-            order_index=i
-        ))
-
-    recipe_data = schemas.RecipeCreate(
-        name=form.get("name"),
-        servings=form.get("servings"),
-        ingredients=ingredients,
-        instructions=[
-            schemas.InstructionCreate(step_number=i + 1, description=desc)
-            for i, desc in enumerate(form.getlist("instruction_description"))
-        ],
-        notes=[
-            schemas.NoteCreate(name=name, text=text)
-            for name, text in zip(form.getlist("note_name"), form.getlist("note_text"))
-            if name and text
-        ],
-        tags=form.get("tags").split(",") if form.get("tags") else []
-    )
-
-    # Create recipe in DB
+@app.post("/recipe/new", response_model=schemas.Recipe)
+async def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
     from . import crud
-    db_recipe = crud.create_recipe(db=db, recipe=recipe_data)
-    
-    # Update photo path if it exists
-    if photo_path:
-        db_recipe.photo_path = photo_path
-        db.add(db_recipe)
-        db.commit()
-        db.refresh(db_recipe)
-
-    # Redirect to the main page
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/", status_code=303)
+    db_recipe = crud.create_recipe(db=db, recipe=recipe)
+    return db_recipe
 
 @app.get("/recipe/{id}/edit", response_class=HTMLResponse)
 async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_db)):
@@ -118,67 +67,11 @@ async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_
     recipe = crud.get_recipe(db, recipe_id=id)
     return templates.TemplateResponse("recipe_form.html", {"request": request, "recipe": recipe})
 
-@app.post("/recipe/{id}/edit", response_class=HTMLResponse)
-async def edit_recipe(request: Request, id: int, db: Session = Depends(get_db)):
-    form = await request.form()
-    
-    # Handle file upload
-    photo_path = None
-    photo = form.get("photo")
-    if photo and photo.filename:
-        # You would add logic here to save the file and get the path
-        # For now, we'll just simulate it
-        photo_path = f"uploads/{photo.filename}"
-        with open(f"app/static/{photo_path}", "wb") as buffer:
-            buffer.write(await photo.read())
-
-    # Create recipe schema
-    # Process ingredients manually
-    ingredients = []
-    ingredient_names = form.getlist("ingredient_name")
-    ingredient_groups = form.getlist("ingredient_group")
-    ingredient_amounts = form.getlist("ingredient_amount")
-    ingredient_optionals = form.getlist("ingredient_optional")
-
-    for i, name in enumerate(ingredient_names):
-        ingredients.append(schemas.IngredientCreate(
-            group_name=ingredient_groups[i],
-            name=name,
-            amount=ingredient_amounts[i],
-            is_optional=str(i) in ingredient_optionals,
-            order_index=i
-        ))
-
-    recipe_data = schemas.RecipeCreate(
-        name=form.get("name"),
-        servings=form.get("servings"),
-        ingredients=ingredients,
-        instructions=[
-            schemas.InstructionCreate(step_number=i + 1, description=desc)
-            for i, desc in enumerate(form.getlist("instruction_description"))
-        ],
-        notes=[
-            schemas.NoteCreate(name=name, text=text)
-            for name, text in zip(form.getlist("note_name"), form.getlist("note_text"))
-            if name and text
-        ],
-        tags=form.get("tags").split(",") if form.get("tags") else []
-    )
-
-    # Update recipe in DB
+@app.post("/recipe/{id}/edit", response_model=schemas.Recipe)
+async def edit_recipe(id: int, recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
     from . import crud
-    db_recipe = crud.update_recipe(db=db, recipe_id=id, recipe=recipe_data)
-    
-    # Update photo path if it exists
-    if photo_path:
-        db_recipe.photo_path = photo_path
-        db.add(db_recipe)
-        db.commit()
-        db.refresh(db_recipe)
-
-    # Redirect to the recipe detail page
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=f"/recipe/{id}", status_code=303)
+    db_recipe = crud.update_recipe(db=db, recipe_id=id, recipe=recipe)
+    return db_recipe
 
 @app.post("/recipe/{id}/delete", response_class=HTMLResponse)
 async def delete_recipe(request: Request, id: int, db: Session = Depends(get_db)):
