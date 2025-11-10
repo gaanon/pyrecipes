@@ -8,7 +8,7 @@ from . import models, schemas
 
 from sqlalchemy.orm import joinedload
 
-UPLOAD_DIR = Path("app/uploads")
+UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 def save_photo(photo_file: UploadFile) -> str:
@@ -18,7 +18,7 @@ def save_photo(photo_file: UploadFile) -> str:
     file_path = UPLOAD_DIR / filename
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(photo_file.file, buffer)
-    return str(file_path.relative_to('app'))
+    return str(file_path)
 
 def get_recipes(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Recipe).options(joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)).offset(skip).limit(limit).all()
