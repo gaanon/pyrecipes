@@ -39,7 +39,7 @@
                 <label for="photo" class="form-label">Photo</label>
                 <input class="form-control" type="file" id="photo" name="photo" accept="image/*">
                 {% if recipe and recipe.photo_path %}
-                    <img src="{{ url_for('uploads', path=recipe.photo_path.replace('uploads/', '')) }}" class="img-fluid mt-2 rounded" style="max-height: 200px;" alt="Recipe Photo">
+                    <img src="{{ url_for('uploads', path=recipe.photo_path.replace('uploads/', '')) if recipe.photo_path and 'placeholder.jpg' not in recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="img-fluid mt-2 rounded" style="max-height: 200px;" alt="Recipe Photo">
                 {% endif %}
             </div>
         </div>

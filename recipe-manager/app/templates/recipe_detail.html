@@ -22,7 +22,7 @@
         </div>
     </div>
 
-    <img src="{{ url_for('uploads', path=recipe.photo_path.replace('uploads/', '')) if recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="img-fluid rounded mb-4 recipe-detail-img" alt="{{ recipe.name }}">
+    <img src="{{ url_for('uploads', path=recipe.photo_path.replace('uploads/', '')) if recipe.photo_path and 'placeholder.jpg' not in recipe.photo_path else url_for('static', path='placeholder.jpg') }}" class="img-fluid rounded mb-4 recipe-detail-img" alt="{{ recipe.name }}">
 
     <div class="row g-5">
         <div class="col-md-5">
