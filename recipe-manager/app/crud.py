@@ -1,8 +1,24 @@
 import datetime
+import shutil
+import uuid
+from pathlib import Path
+from fastapi import UploadFile
 from sqlalchemy.orm import Session
 from . import models, schemas
 
 from sqlalchemy.orm import joinedload
+
+UPLOAD_DIR = Path("app/uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+def save_photo(photo_file: UploadFile) -> str:
+    """Saves the uploaded photo and returns the path."""
+    ext = Path(photo_file.filename).suffix
+    filename = f"{uuid.uuid4()}{ext}"
+    file_path = UPLOAD_DIR / filename
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(photo_file.file, buffer)
+    return str(file_path.relative_to('app'))
 
 def get_recipes(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Recipe).options(joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)).offset(skip).limit(limit).all()
@@ -26,9 +42,13 @@ def create_tag(db: Session, tag: schemas.TagCreate):
     db.refresh(db_tag)
     return db_tag
 
-def create_recipe(db: Session, recipe: schemas.RecipeCreate):
+def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: UploadFile = None):
     # Create the main recipe object
-    db_recipe = models.Recipe(name=recipe.name, servings=recipe.servings)
+    photo_path = None
+    if photo_file:
+        photo_path = save_photo(photo_file)
+
+    db_recipe = models.Recipe(name=recipe.name, servings=recipe.servings, photo_path=photo_path)
     db.add(db_recipe)
     db.commit()
     db.refresh(db_recipe)
@@ -61,7 +81,7 @@ def create_recipe(db: Session, recipe: schemas.RecipeCreate):
     db.refresh(db_recipe)
     return db_recipe
 
-def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate):
+def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, photo_file: UploadFile = None):
     db_recipe = get_recipe(db, recipe_id)
     if not db_recipe:
         return None
@@ -69,6 +89,9 @@ def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate):
     # Update main recipe fields
     db_recipe.name = recipe.name
     db_recipe.servings = recipe.servings
+
+    if photo_file:
+        db_recipe.photo_path = save_photo(photo_file)
 
     # Clear existing relationships
     db_recipe.ingredients = []

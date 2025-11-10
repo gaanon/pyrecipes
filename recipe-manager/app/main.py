@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Depends, Request, File, UploadFile
-from typing import List
+from fastapi import FastAPI, Depends, Request, File, UploadFile, Form
+from typing import List, Optional
 import datetime
+import json
 from contextlib import asynccontextmanager
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +18,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/uploads", StaticFiles(directory="app/uploads"), name="uploads")
+
 
 from . import utils
 
@@ -55,11 +58,28 @@ async def recipe_detail(request: Request, id: int, db: Session = Depends(get_db)
     recipe = crud.get_recipe(db, recipe_id=id)
     return templates.TemplateResponse("recipe_detail.html", {"request": request, "recipe": recipe})
 
-@app.post("/recipe/new", response_model=schemas.Recipe)
-async def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
+@app.post("/recipe/new", response_class=RedirectResponse)
+async def create_recipe(
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    servings: str = Form(""),
+    tags: str = Form(""),
+    ingredients: str = Form("[]"),
+    instructions: str = Form("[]"),
+    notes: str = Form("[]"),
+    photo: Optional[UploadFile] = File(None)
+):
     from . import crud
-    db_recipe = crud.create_recipe(db=db, recipe=recipe)
-    return db_recipe
+    recipe_data = schemas.RecipeCreate(
+        name=name,
+        servings=servings,
+        tags=[tag.strip() for tag in tags.split(',') if tag.strip()],
+        ingredients=[schemas.IngredientCreate(**i) for i in json.loads(ingredients)],
+        instructions=[schemas.InstructionCreate(**i) for i in json.loads(instructions)],
+        notes=[schemas.NoteCreate(**n) for n in json.loads(notes)]
+    )
+    db_recipe = crud.create_recipe(db=db, recipe=recipe_data, photo_file=photo)
+    return RedirectResponse(url=f"/recipe/{db_recipe.id}", status_code=303)
 
 @app.get("/recipe/{id}/edit", response_class=HTMLResponse)
 async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_db)):
@@ -67,11 +87,29 @@ async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_
     recipe = crud.get_recipe(db, recipe_id=id)
     return templates.TemplateResponse("recipe_form.html", {"request": request, "recipe": recipe})
 
-@app.post("/recipe/{id}/edit", response_model=schemas.Recipe)
-async def edit_recipe(id: int, recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
+@app.post("/recipe/{id}/edit", response_class=RedirectResponse)
+async def edit_recipe(
+    id: int,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    servings: str = Form(""),
+    tags: str = Form(""),
+    ingredients: str = Form("[]"),
+    instructions: str = Form("[]"),
+    notes: str = Form("[]"),
+    photo: Optional[UploadFile] = File(None)
+):
     from . import crud
-    db_recipe = crud.update_recipe(db=db, recipe_id=id, recipe=recipe)
-    return db_recipe
+    recipe_data = schemas.RecipeCreate(
+        name=name,
+        servings=servings,
+        tags=[tag.strip() for tag in tags.split(',') if tag.strip()],
+        ingredients=[schemas.IngredientCreate(**i) for i in json.loads(ingredients)],
+        instructions=[schemas.InstructionCreate(**i) for i in json.loads(instructions)],
+        notes=[schemas.NoteCreate(**n) for n in json.loads(notes)]
+    )
+    db_recipe = crud.update_recipe(db=db, recipe_id=id, recipe=recipe_data, photo_file=photo)
+    return RedirectResponse(url=f"/recipe/{db_recipe.id}", status_code=303)
 
 @app.post("/recipe/{id}/delete", response_class=HTMLResponse)
 async def delete_recipe(request: Request, id: int, db: Session = Depends(get_db)):

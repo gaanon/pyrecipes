@@ -39,7 +39,7 @@
                 <label for="photo" class="form-label">Photo</label>
                 <input class="form-control" type="file" id="photo" name="photo" accept="image/*">
                 {% if recipe and recipe.photo_path %}
-                    <img src="{{ url_for('static', path=recipe.photo_path) }}" class="img-fluid mt-2 rounded" style="max-height: 200px;" alt="Recipe Photo">
+                    <img src="{{ url_for('uploads', path=recipe.photo_path.replace('uploads/', '')) }}" class="img-fluid mt-2 rounded" style="max-height: 200px;" alt="Recipe Photo">
                 {% endif %}
             </div>
         </div>
@@ -223,6 +223,16 @@ document.addEventListener('DOMContentLoaded', function () {
     recipeForm.addEventListener('submit', async function(e) {
         e.preventDefault();
 
+        const formData = new FormData();
+        formData.append('name', document.getElementById('name').value);
+        formData.append('servings', document.getElementById('servings').value);
+        formData.append('tags', document.getElementById('tags').value);
+
+        const photoInput = document.getElementById('photo');
+        if (photoInput.files.length > 0) {
+            formData.append('photo', photoInput.files[0]);
+        }
+
         const ingredients = Array.from(document.querySelectorAll('.ingredient-item')).map((item, index) => ({
             group_name: item.querySelector('[name=ingredient_group]').value,
             name: item.querySelector('[name=ingredient_name]').value,
@@ -230,43 +240,34 @@ document.addEventListener('DOMContentLoaded', function () {
             is_optional: item.querySelector('[name=ingredient_optional]').checked,
             order_index: index
         }));
+        formData.append('ingredients', JSON.stringify(ingredients));
 
         const instructions = Array.from(document.querySelectorAll('.instruction-item')).map((item, index) => ({
             step_number: index + 1,
             description: item.querySelector('[name=instruction_description]').value
         }));
+        formData.append('instructions', JSON.stringify(instructions));
 
         const notes = Array.from(document.querySelectorAll('.note-item')).map(item => ({
             name: item.querySelector('[name=note_name]').value,
             text: item.querySelector('[name=note_text]').value
         })).filter(note => note.name && note.text);
-
-        const recipeData = {
-            name: document.getElementById('name').value,
-            servings: document.getElementById('servings').value,
-            tags: document.getElementById('tags').value.split(',').map(t => t.trim()).filter(t => t),
-            ingredients,
-            instructions,
-            notes
-        };
+        formData.append('notes', JSON.stringify(notes));
 
         const url = this.action;
-        const method = '{{ "POST" if not recipe else "POST" }}'; // Always POST for our new API
 
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(recipeData)
+                body: formData // No Content-Type header needed; browser sets it for FormData
             });
 
-            if (!response.ok) {
-                throw new Error('Failed to save recipe. Status: ' + response.status);
+            if (response.ok && response.redirected) {
+                window.location.href = response.url;
+            } else {
+                const errorData = await response.text();
+                throw new Error('Failed to save recipe. Status: ' + response.status + ' ' + errorData);
             }
-
-            const result = await response.json();
-            window.location.href = `/recipe/${result.id}`;
-
         } catch (error) {
             console.error("Save recipe error:", error);
             alert("An error occurred while saving the recipe.");
