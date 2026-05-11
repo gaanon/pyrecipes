@@ -5,9 +5,18 @@ from openai import OpenAI
 from . import schemas
 from fastapi import UploadFile
 
-# It's a good practice to load the API key from environment variables
-# Make sure to set your OPENAI_API_KEY in your environment
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+def _get_client() -> OpenAI:
+    api_key = os.environ.get("AI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    base_url = os.environ.get("AI_API_BASE_URL")
+    kwargs = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
+
+
+def _get_model() -> str:
+    return os.environ.get("AI_MODEL", "gpt-4o-mini")
 
 def get_recipe_json_prompt():
     return """
@@ -65,8 +74,8 @@ async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCre
     prompt_text = get_recipe_json_prompt()
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = _get_client().chat.completions.create(
+            model=_get_model(),
             messages=[
                 {
                     "role": "user",
