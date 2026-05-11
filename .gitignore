@@ -142,6 +142,8 @@ backup.sql
 
 # Uploads
 recipe-manager/app/static/uploads/
+recipe-manager/app/uploads/
+recipe-manager/uploads/
 
 # Backups
 recipe-manager/backups/
