@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - ~/.config/rclone:/root/.config/rclone
       - ./app:/code/app
