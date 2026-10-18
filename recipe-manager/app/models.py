@@ -1,7 +1,7 @@
 import datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -19,8 +19,12 @@ class Recipe(Base):
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    ingredients: Mapped[List["Ingredient"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    instructions: Mapped[List["Instruction"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    ingredients: Mapped[List["Ingredient"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan", order_by="Ingredient.order_index"
+    )
+    instructions: Mapped[List["Instruction"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan", order_by="Instruction.step_number"
+    )
     notes: Mapped[List["Note"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     recipe_tags: Mapped[List["RecipeTag"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
@@ -85,8 +89,10 @@ class MealPlan(Base):
     __tablename__ = "meal_plans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    plan_date: Mapped[datetime.datetime] = mapped_column(DateTime)
-    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
+    plan_date: Mapped[datetime.date] = mapped_column(Date)
+    recipe_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("recipes.id", ondelete="SET NULL", name="fk_meal_plans_recipe_id_recipes")
+    )
     custom_meal_name: Mapped[Optional[str]] = mapped_column(String(255))
 
     recipe: Mapped[Optional["Recipe"]] = relationship()

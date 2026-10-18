@@ -77,7 +77,7 @@ docker-compose exec db mysql -u user -ppassword recipe_db
 - `ai_service.py` — Calls an OpenAI-compatible vision API to parse a recipe image into a `RecipeCreate` schema; provider, model, and key are configured via env vars
 - `utils.py` — Template helpers (e.g., `get_color_from_string` for tag colors)
 
-**Data model:** `Recipe` has one-to-many relationships with `Ingredient`, `Instruction`, and `Note`, all using `cascade="all, delete-orphan"`. Tags use a many-to-many join table (`recipe_tags`) with `Tag` as the canonical tag entity; tags are created on-demand in `crud.create_tag`.
+**Data model:** `Recipe` has one-to-many relationships with `Ingredient`, `Instruction`, and `Note`, all using `cascade="all, delete-orphan"`. Tags use a many-to-many join table (`recipe_tags`) with `Tag` as the canonical tag entity; tags are created on-demand in `crud.create_tag`. Tag lookup is case-insensitive and a recipe links each tag once (`crud._link_tags`). Deleting a recipe keeps its meal-plan entries as custom meals with the recipe's name.
 
 **Photo uploads:** Stored under `./uploads/` (volume-mounted). Paths saved as `uploads/<uuid>.<ext>` in `Recipe.photo_path`. Served by FastAPI's `StaticFiles` at `/uploads`.
 

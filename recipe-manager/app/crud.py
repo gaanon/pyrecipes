@@ -3,7 +3,7 @@ import shutil
 import uuid
 from pathlib import Path
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 from . import models, schemas
 
@@ -36,7 +36,8 @@ def get_recipe(db: Session, recipe_id: int):
     return db.get(models.Recipe, recipe_id, options=[_WITH_TAGS])
 
 def get_tag_by_name(db: Session, name: str):
-    return db.scalar(select(models.Tag).where(models.Tag.name == name))
+    # Case-insensitive, matching MySQL's default collation (and the unique index on tags.name)
+    return db.scalar(select(models.Tag).where(func.lower(models.Tag.name) == name.lower()))
 
 def create_tag(db: Session, tag: schemas.TagCreate):
     db_tag = models.Tag(name=tag.name)
@@ -44,6 +45,20 @@ def create_tag(db: Session, tag: schemas.TagCreate):
     db.commit()
     db.refresh(db_tag)
     return db_tag
+
+def _link_tags(db: Session, db_recipe: models.Recipe, tag_names: list[str]):
+    """Link tags to the recipe, once each: "Soup, soup" is one tag. Existing tags keep their spelling."""
+    # Deduplicated by tag id, so whatever the database collation treats as equal is linked once
+    linked_tag_ids = set()
+    for tag_name in (name.strip() for name in tag_names):
+        if not tag_name:
+            continue
+        db_tag = get_tag_by_name(db, name=tag_name)
+        if not db_tag:
+            db_tag = create_tag(db, schemas.TagCreate(name=tag_name))
+        if db_tag.id not in linked_tag_ids:
+            linked_tag_ids.add(db_tag.id)
+            db.add(models.RecipeTag(recipe_id=db_recipe.id, tag_id=db_tag.id))
 
 def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: UploadFile = None):
     # Create the main recipe object
@@ -71,14 +86,7 @@ def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: UploadF
         db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_note)
 
-    # Handle Tags
-    for tag_name in recipe.tags:
-        db_tag = get_tag_by_name(db, name=tag_name)
-        if not db_tag:
-            db_tag = create_tag(db, schemas.TagCreate(name=tag_name))
-        
-        recipe_tag_link = models.RecipeTag(recipe_id=db_recipe.id, tag_id=db_tag.id)
-        db.add(recipe_tag_link)
+    _link_tags(db, db_recipe, recipe.tags)
 
     db.commit()
     db.refresh(db_recipe)
@@ -117,14 +125,7 @@ def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, pho
         db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_note)
 
-    # Handle Tags
-    for tag_name in recipe.tags:
-        db_tag = get_tag_by_name(db, name=tag_name)
-        if not db_tag:
-            db_tag = create_tag(db, schemas.TagCreate(name=tag_name))
-        
-        recipe_tag_link = models.RecipeTag(recipe_id=db_recipe.id, tag_id=db_tag.id)
-        db.add(recipe_tag_link)
+    _link_tags(db, db_recipe, recipe.tags)
 
     db.commit()
     db.refresh(db_recipe)
@@ -133,6 +134,12 @@ def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, pho
 def delete_recipe(db: Session, recipe_id: int):
     db_recipe = get_recipe(db, recipe_id)
     if db_recipe:
+        # Keep planned meals for this recipe, as custom meals carrying its name
+        db.execute(
+            update(models.MealPlan)
+            .where(models.MealPlan.recipe_id == recipe_id)
+            .values(recipe_id=None, custom_meal_name=func.coalesce(models.MealPlan.custom_meal_name, db_recipe.name))
+        )
         db.delete(db_recipe)
         db.commit()
     return db_recipe

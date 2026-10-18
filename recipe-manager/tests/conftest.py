@@ -1,12 +1,19 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models
 from app.database import get_db
 from app.main import app
+
+
+def enforce_foreign_keys(engine):
+    # SQLite ignores foreign keys unless asked; MySQL always enforces them
+    @event.listens_for(engine, "connect")
+    def _on_connect(dbapi_connection, _record):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -17,6 +24,7 @@ def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    enforce_foreign_keys(engine)
     models.Base.metadata.create_all(bind=engine)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:

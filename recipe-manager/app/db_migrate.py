@@ -18,8 +18,8 @@ def _config(connection) -> Config:
     return config
 
 
-def run_migrations(engine: Engine) -> None:
-    """Bring the database schema up to date.
+def run_migrations(engine: Engine, revision: str = "head") -> None:
+    """Bring the database schema up to `revision` (the latest by default).
 
     A database created before Alembic has the app's tables but no alembic_version
     table; it is stamped at the baseline instead of having its tables recreated.
@@ -29,4 +29,4 @@ def run_migrations(engine: Engine) -> None:
         tables = set(inspect(connection).get_table_names())
         if "recipes" in tables and "alembic_version" not in tables:
             command.stamp(config, BASELINE_REVISION)
-        command.upgrade(config, "head")
+        command.upgrade(config, revision)
