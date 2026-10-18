@@ -1,18 +1,39 @@
-import os
 import base64
 import json
-from openai import OpenAI
-from . import schemas
+import logging
+import os
+import re
+from typing import Optional
+
+import httpx2
+import openai
 from fastapi import UploadFile
+from pydantic import ValidationError
+
+from . import schemas
+
+logger = logging.getLogger(__name__)
+
+# Vision calls can be slow; give up after this many seconds rather than hang the request
+AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS") or 60)
 
 
-def _get_client() -> OpenAI:
-    api_key = os.environ.get("AI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    base_url = os.environ.get("AI_API_BASE_URL")
-    kwargs = {"api_key": api_key}
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+class AIServiceError(Exception):
+    """The AI provider failed or returned something unusable; `status_code` is the HTTP status to report."""
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _get_client(http_client: Optional[httpx2.AsyncClient] = None) -> openai.AsyncOpenAI:
+    return openai.AsyncOpenAI(
+        api_key=os.environ.get("AI_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+        base_url=os.environ.get("AI_API_BASE_URL") or None,  # None: the default OpenAI endpoint
+        timeout=AI_TIMEOUT_SECONDS,
+        max_retries=1,
+        http_client=http_client,
+    )
 
 
 def _get_model() -> str:
@@ -63,54 +84,72 @@ def get_recipe_json_prompt():
     - The final output must be a single, valid JSON object and nothing else. Do not include any explanatory text before or after the JSON.
     """
 
+def _extract_json(content: Optional[str]) -> dict:
+    """Finds the JSON object in the model's answer, which may be wrapped in a Markdown fence or prose."""
+    if not content:
+        raise AIServiceError("The AI returned an empty answer")
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)
+    candidate = fenced.group(1) if fenced else content[content.find("{"):content.rfind("}") + 1]
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        raise AIServiceError("The AI's answer did not contain a readable recipe")
+    if not isinstance(data, dict):
+        raise AIServiceError("The AI's answer did not contain a readable recipe")
+    return data
+
+
 async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCreate:
-    """
-    This function takes an image file, sends it to the GPT-4 Vision API,
-    and returns a structured RecipeCreate object.
+    """Sends the image to the configured OpenAI-compatible vision model and returns the recipe it reads.
+
+    Raises AIServiceError if the provider fails, times out, or returns something that isn't a recipe.
     """
     image_data = await image_file.read()
     base64_image = base64.b64encode(image_data).decode('utf-8')
-
-    prompt_text = get_recipe_json_prompt()
+    content_type = image_file.content_type or "image/jpeg"
+    model = _get_model()
 
     try:
-        response = _get_client().chat.completions.create(
-            model=_get_model(),
+        response = await _get_client().chat.completions.create(
+            model=model,
             messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt_text},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            }
-                        }
-                    ]
+                        {"type": "text", "text": get_recipe_json_prompt()},
+                        {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64_image}"}},
+                    ],
                 }
             ],
             max_tokens=2048,
         )
+    except openai.APITimeoutError:
+        logger.warning("AI request timed out after %ss (model=%s)", AI_TIMEOUT_SECONDS, model)
+        raise AIServiceError("The AI took too long to answer", status_code=504)
+    except openai.APIStatusError as e:
+        logger.error("AI provider returned HTTP %s (model=%s, base_url=%s): %s",
+                     e.status_code, model, os.environ.get("AI_API_BASE_URL") or "default", e.message)
+        raise AIServiceError(f"The AI provider returned HTTP {e.status_code}")
+    except openai.APIConnectionError as e:
+        logger.error("Could not reach the AI provider at %s (model=%s): %s",
+                     os.environ.get("AI_API_BASE_URL") or "default", model, e.__cause__ or e)
+        raise AIServiceError(f"Could not reach the AI provider: {e}")
+    except openai.OpenAIError as e:
+        logger.exception("AI request failed (model=%s)", model)
+        raise AIServiceError(f"Could not reach the AI provider: {e}")
 
-        # Extract the JSON content from the response
-        json_string = response.choices[0].message.content
-        # Clean up the string in case the model returns it wrapped in markdown
-        if json_string.startswith("```json"):
-            json_string = json_string[7:-4]
-        
-        recipe_dict = json.loads(json_string)
-        
-        # Ensure ingredients and instructions have correct indexing if missing
-        for i, ing in enumerate(recipe_dict.get("ingredients", [])):
+    recipe_dict = _extract_json(response.choices[0].message.content if response.choices else None)
+
+    # Number ingredients and steps in the order the model listed them
+    for i, ing in enumerate(recipe_dict.get("ingredients") or []):
+        if isinstance(ing, dict):
             ing['order_index'] = i
-        for i, inst in enumerate(recipe_dict.get("instructions", [])):
+    for i, inst in enumerate(recipe_dict.get("instructions") or []):
+        if isinstance(inst, dict):
             inst['step_number'] = i + 1
 
-        return schemas.RecipeCreate(**recipe_dict)
-
-    except Exception as e:
-        base_url = os.environ.get("AI_API_BASE_URL") or "https://api.openai.com/v1 (default)"
-        print(f"An error occurred with the OpenAI API call (base_url={base_url}, model={_get_model()}): {e}")
-        # Return an empty or default schema on error
-        return schemas.RecipeCreate(name="Error: Could not parse recipe", ingredients=[], instructions=[], tags=[])
+    try:
+        return schemas.RecipeCreate.model_validate(recipe_dict)
+    except ValidationError as e:
+        logger.warning("AI answer was not a valid recipe: %s", e)
+        raise AIServiceError("The AI's answer was not a valid recipe")

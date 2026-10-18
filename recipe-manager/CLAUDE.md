@@ -63,6 +63,7 @@ docker-compose exec db mysql -u user -ppassword recipe_db
 | `AI_API_KEY` | API key for the AI provider; falls back to `OPENAI_API_KEY` |
 | `AI_API_BASE_URL` | Optional base URL for an OpenAI-compatible provider (e.g. Ollama, Groq, OpenRouter); omit to use the default OpenAI endpoint |
 | `AI_MODEL` | Model name to use; defaults to `gpt-4o-mini` |
+| `AI_TIMEOUT_SECONDS` | How long to wait for the AI provider before giving up (HTTP 504); defaults to `60` |
 | `UPLOAD_DIR` | Folder recipe photos are saved to and served from at `/uploads`; defaults to `uploads` (`/code/uploads` in the container). `backup_app.py` archives the same folder |
 
 ## Architecture
@@ -86,6 +87,6 @@ docker-compose exec db mysql -u user -ppassword recipe_db
 
 **Form submission flow:** HTML forms POST JSON-encoded ingredient/instruction/note arrays as hidden fields (serialized by frontend JS), then `main.py` deserializes them with `json.loads()` before building Pydantic schemas.
 
-**AI recipe import:** `POST /api/process-recipe-image` accepts an image upload, sends it base64-encoded to GPT-4o-mini, and returns a pre-filled `RecipeCreate` JSON that the frontend uses to populate the recipe form.
+**AI recipe import:** `POST /api/process-recipe-image` accepts an image upload and sends it base64-encoded (with its real content type) to the configured vision model through the async OpenAI client, so it doesn't block other requests. It returns a pre-filled `RecipeCreate` JSON that the frontend uses to populate the recipe form. Provider errors return 502, timeouts 504, and an answer that isn't a valid recipe 502, each with a `detail` message the page shows. Routes that use the database are plain `def` (FastAPI runs them in a thread pool); only non-DB routes are `async`.
 
 **Meal planner:** JSON API only (`/api/meal-plan` GET/POST/DELETE) — no dedicated UI template, intended to be consumed by a frontend widget.

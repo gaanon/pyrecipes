@@ -192,7 +192,9 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to process image. Status: ' + response.status);
+                // The server explains what went wrong in `detail`, e.g. "The AI provider returned HTTP 403"
+                const body = await response.json().catch(() => ({}));
+                throw new Error(typeof body.detail === 'string' ? body.detail : 'Status ' + response.status);
             }
 
             const data = await response.json();
@@ -213,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         } catch (error) {
             console.error("AI processing error:", error);
-            alert("An error occurred while processing the recipe image.");
+            alert("Could not read the recipe from the image: " + error.message + "\nYour form has not been changed.");
         } finally {
             spinner.classList.add('d-none');
             this.disabled = false;

@@ -61,7 +61,7 @@ def recipe_form(
 
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request, db: Session = Depends(get_db), search: str = None):
+def read_root(request: Request, db: Session = Depends(get_db), search: str = None):
     if search:
         recipes = crud.search_recipes(db=db, query=search)
     else:
@@ -70,20 +70,22 @@ async def read_root(request: Request, db: Session = Depends(get_db), search: str
 
 @app.post("/api/process-recipe-image", response_model=schemas.RecipeCreate)
 async def process_recipe_image(file: UploadFile = File(...)):
-    recipe_data = await ai_service.extract_recipe_from_image(file)
-    return recipe_data
+    try:
+        return await ai_service.extract_recipe_from_image(file)
+    except ai_service.AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
 @app.get("/recipe/new", response_class=HTMLResponse)
 async def new_recipe_form(request: Request):
     return templates.TemplateResponse(request, "recipe_form.html", {"recipe": None})
 
 @app.get("/recipe/{id}", response_class=HTMLResponse)
-async def recipe_detail(request: Request, id: int, db: Session = Depends(get_db)):
+def recipe_detail(request: Request, id: int, db: Session = Depends(get_db)):
     recipe = _get_recipe_or_404(db, id)
     return templates.TemplateResponse(request, "recipe_detail.html", {"recipe": recipe})
 
 @app.post("/recipe/new", response_class=RedirectResponse)
-async def create_recipe(
+def create_recipe(
     db: Session = Depends(get_db),
     recipe_data: schemas.RecipeCreate = Depends(recipe_form),
     photo: Optional[UploadFile] = File(None)
@@ -92,12 +94,12 @@ async def create_recipe(
     return RedirectResponse(url=f"/recipe/{db_recipe.id}", status_code=303)
 
 @app.get("/recipe/{id}/edit", response_class=HTMLResponse)
-async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_db)):
+def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_db)):
     recipe = _get_recipe_or_404(db, id)
     return templates.TemplateResponse(request, "recipe_form.html", {"recipe": recipe})
 
 @app.post("/recipe/{id}/edit", response_class=RedirectResponse)
-async def edit_recipe(
+def edit_recipe(
     id: int,
     db: Session = Depends(get_db),
     recipe_data: schemas.RecipeCreate = Depends(recipe_form),
@@ -109,7 +111,7 @@ async def edit_recipe(
     return RedirectResponse(url=f"/recipe/{db_recipe.id}", status_code=303)
 
 @app.post("/recipe/{id}/delete", response_class=RedirectResponse)
-async def delete_recipe(id: int, db: Session = Depends(get_db)):
+def delete_recipe(id: int, db: Session = Depends(get_db)):
     if crud.delete_recipe(db=db, recipe_id=id) is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return RedirectResponse(url="/", status_code=303)
@@ -132,6 +134,6 @@ def delete_meal_from_plan(meal_plan_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 @app.get("/tag/{tag_name}", response_class=HTMLResponse)
-async def view_recipes_by_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):
+def view_recipes_by_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):
     recipes = crud.get_recipes_by_tag(db=db, tag_name=tag_name)
     return templates.TemplateResponse(request, "index.html", {"recipes": recipes, "tag_name": tag_name})
