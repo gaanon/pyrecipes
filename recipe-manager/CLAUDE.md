@@ -4,21 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the Application
 
+**Local development** uses `docker-compose.yml` (dev only):
+
 ```bash
-# Build and start all services (app + MySQL)
-docker-compose up --build -d
-
-# View logs
-docker-compose logs -f app
-
-# Restart app after code changes (hot-reload is enabled via volume mount)
-docker-compose restart app
-
-# Stop everything
-docker-compose down
+cp .env.example .env          # optional: every setting has a dev default; add AI_API_KEY to use the scanner
+docker compose up --build -d  # app + MySQL
+docker compose logs -f app
+docker compose down           # add -v to also delete the dev database
 ```
 
-The app runs at `http://localhost:8000`. The `app/` directory is volume-mounted, so Python source changes trigger automatic uvicorn reload without rebuilding the image.
+The app runs at `http://localhost:8010` (`APP_PORT`). `app/` and the scripts are mounted into the container and uvicorn runs with `--reload`, so code changes apply without a restart; rebuild only after changing `requirements.txt` or the `Dockerfile`. MySQL is published on `127.0.0.1:3306` for local DB tools.
+
+**Production** runs on a home server with rootless Podman and the Quadlet units in `deploy/quadlet/` (no source mounts, no published DB port, settings in `~/recipes/app.env` and `~/recipes/db.env`).
 
 ## Tests
 
@@ -44,14 +41,14 @@ DATABASE_URL=sqlite:////tmp/scratch.db .venv/bin/alembic upgrade head
 DATABASE_URL=sqlite:////tmp/scratch.db .venv/bin/alembic revision --autogenerate -m "describe change"
 ```
 
-Inside the container: `docker-compose exec app alembic current` / `alembic history`.
+Inside the container: `docker compose exec app alembic current` / `alembic history` (production: `podman exec recipes-app alembic current`).
 
 ```bash
 # Manual DB backup
-docker-compose exec db mysqldump -u root -p'rootpassword' recipe_db > backup.sql
+docker compose exec db sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" recipe_db' > backup.sql
 
 # Connect to MySQL shell
-docker-compose exec db mysql -u user -ppassword recipe_db
+docker compose exec db sh -c 'mysql -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
 ```
 
 ## Environment Variables

@@ -1,42 +1,54 @@
+# LOCAL DEVELOPMENT ONLY.
+# Production runs on Podman Quadlets (see deploy/quadlet/): no source mounts, no published
+# database port, and real secrets. Don't deploy this file.
+#
+# Settings come from .env next to this file (copy .env.example); every value has a dev default.
+
 services:
   app:
     build: .
+    # --reload restarts the server when anything under app/ changes
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "app"]
     ports:
-      - "8010:8000"
+      - "${APP_PORT:-8010}:8000"
     volumes:
-      - ~/.config/rclone:/root/.config/rclone
+      # Source mounted over the image so edits apply without a rebuild
       - ./app:/code/app
-      - ./app/static:/code/app/static
-      - ./uploads:/code/uploads
-      - ./import_recipes.py:/code/import_recipes.py
-      - ./backups:/code/backups
       - ./backup_app.py:/code/backup_app.py
-      - ../gorecipes_export.json:/code/gorecipes_export.json
+      - ./import_recipes.py:/code/import_recipes.py
+      - ./alembic.ini:/code/alembic.ini
+      # Data
+      - ./uploads:/code/uploads
+      - ./backups:/code/backups
+      # Sample data for import_recipes.py (tracked in git, read-only)
+      - ../gorecipes_export.json:/code/gorecipes_export.json:ro
     depends_on:
       db:
         condition: service_healthy
     environment:
-      - PYTHONPATH=/code
-      - DATABASE_URL=mysql+pymysql://user:password@db/recipe_db
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - AI_API_KEY=${AI_API_KEY:-}
-      - AI_API_BASE_URL=${AI_API_BASE_URL:-}
-      - AI_MODEL=${AI_MODEL:-}
+      PYTHONPATH: /code
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-user}:${MYSQL_PASSWORD:-password}@db/${MYSQL_DATABASE:-recipe_db}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_API_BASE_URL: ${AI_API_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
   db:
     image: mysql:8.0
-    restart: always
     environment:
-      MYSQL_DATABASE: 'recipe_db'
-      MYSQL_USER: 'user'
-      MYSQL_PASSWORD: 'password'
-      MYSQL_ROOT_PASSWORD: 'rootpassword'
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-recipe_db}
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
     volumes:
       - mysql-data:/var/lib/mysql
     ports:
-      - "3306:3306"
+      # Published for local DB tools, but only on this machine, not the network
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "user", "-ppassword"]
+      # $$ defers expansion to the container, which has these variables set
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u $$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
       interval: 10s
       timeout: 5s
       retries: 5
