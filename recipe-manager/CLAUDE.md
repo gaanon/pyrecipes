@@ -35,7 +35,16 @@ Tests use an in-memory SQLite database (see `tests/conftest.py`), overriding the
 
 ## Database
 
-MySQL 8.0 runs as the `db` service. Tables are auto-created at startup via `models.Base.metadata.create_all()` in `app/main.py`'s lifespan handler — there are no migration files.
+MySQL 8.0 runs as the `db` service. The schema is managed by Alembic (`app/migrations/`): on startup, `app/main.py`'s lifespan calls `db_migrate.run_migrations()`, which upgrades to the latest revision. A database created before Alembic (tables present, no `alembic_version` table) is first stamped at `0001_baseline` rather than recreated.
+
+To change the schema, edit `app/models.py`, then generate and review a migration (autogenerate against a scratch SQLite DB, or the real MySQL):
+
+```bash
+DATABASE_URL=sqlite:////tmp/scratch.db .venv/bin/alembic upgrade head
+DATABASE_URL=sqlite:////tmp/scratch.db .venv/bin/alembic revision --autogenerate -m "describe change"
+```
+
+Inside the container: `docker-compose exec app alembic current` / `alembic history`.
 
 ```bash
 # Manual DB backup

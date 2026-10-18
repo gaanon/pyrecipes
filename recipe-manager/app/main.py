@@ -7,13 +7,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from . import models, database, schemas, ai_service
+from . import models, database, schemas, ai_service, db_migrate
 from .database import get_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create the database tables on startup
-    models.Base.metadata.create_all(bind=database.engine)
+    # Create or upgrade the database schema on startup
+    db_migrate.run_migrations(database.engine)
     yield
 
 app = FastAPI(lifespan=lifespan)
