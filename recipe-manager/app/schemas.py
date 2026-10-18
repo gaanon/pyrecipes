@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 import datetime
 
@@ -16,8 +16,7 @@ class Ingredient(IngredientBase):
     id: int
     recipe_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class InstructionBase(BaseModel):
     step_number: int
@@ -30,8 +29,7 @@ class Instruction(InstructionBase):
     id: int
     recipe_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NoteBase(BaseModel):
     name: str
@@ -45,8 +43,7 @@ class Note(NoteBase):
     recipe_id: int
     created_at: datetime.datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TagBase(BaseModel):
     name: str
@@ -57,8 +54,7 @@ class TagCreate(TagBase):
 class Tag(TagBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Define Recipe schemas BEFORE MealPlan schemas that depend on it
 class RecipeBase(BaseModel):
@@ -79,10 +75,9 @@ class Recipe(RecipeBase):
     ingredients: List[Ingredient] = []
     instructions: List[Instruction] = []
     notes: List[Note] = []
-    tags: List["Tag"] = [] # Use forward reference for robustness
+    tags: List[Tag] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Now define MealPlan schemas
 class MealPlanBase(BaseModel):
@@ -95,11 +90,6 @@ class MealPlanCreate(MealPlanBase):
 
 class MealPlan(MealPlanBase):
     id: int
-    recipe: Optional["Recipe"] = None
+    recipe: Optional[Recipe] = None
 
-    class Config:
-        orm_mode = True
-
-# Update forward references at the end of the file
-Recipe.update_forward_refs()
-MealPlan.update_forward_refs()
+    model_config = ConfigDict(from_attributes=True)

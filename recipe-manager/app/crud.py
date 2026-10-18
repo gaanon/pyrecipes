@@ -55,17 +55,17 @@ def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: UploadF
 
     # Handle Ingredients
     for ingredient_data in recipe.ingredients:
-        db_ingredient = models.Ingredient(**ingredient_data.dict(), recipe_id=db_recipe.id)
+        db_ingredient = models.Ingredient(**ingredient_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_ingredient)
 
     # Handle Instructions
     for instruction_data in recipe.instructions:
-        db_instruction = models.Instruction(**instruction_data.dict(), recipe_id=db_recipe.id)
+        db_instruction = models.Instruction(**instruction_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_instruction)
 
     # Handle Notes
     for note_data in recipe.notes:
-        db_note = models.Note(**note_data.dict(), recipe_id=db_recipe.id)
+        db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_note)
 
     # Handle Tags
@@ -101,17 +101,17 @@ def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, pho
 
     # Handle Ingredients
     for ingredient_data in recipe.ingredients:
-        db_ingredient = models.Ingredient(**ingredient_data.dict(), recipe_id=db_recipe.id)
+        db_ingredient = models.Ingredient(**ingredient_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_ingredient)
 
     # Handle Instructions
     for instruction_data in recipe.instructions:
-        db_instruction = models.Instruction(**instruction_data.dict(), recipe_id=db_recipe.id)
+        db_instruction = models.Instruction(**instruction_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_instruction)
 
     # Handle Notes
     for note_data in recipe.notes:
-        db_note = models.Note(**note_data.dict(), recipe_id=db_recipe.id)
+        db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
         db.add(db_note)
 
     # Handle Tags
@@ -138,7 +138,7 @@ def get_meal_plans(db: Session, start_date: datetime.date, end_date: datetime.da
     return db.query(models.MealPlan).filter(models.MealPlan.plan_date.between(start_date, end_date)).all()
 
 def create_meal_plan(db: Session, meal_plan: schemas.MealPlanCreate):
-    db_meal_plan = models.MealPlan(**meal_plan.dict())
+    db_meal_plan = models.MealPlan(**meal_plan.model_dump())
     db.add(db_meal_plan)
     db.commit()
     db.refresh(db_meal_plan)
