@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from . import models, database, schemas, ai_service
+from .database import get_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,13 +27,6 @@ from . import utils
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals['get_color_from_string'] = utils.get_color_from_string
 
-# Dependency to get the database session
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), search: str = None):

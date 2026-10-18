@@ -1,82 +1,92 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+import datetime
+from typing import List, Optional
 
-Base = declarative_base()
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
 
 class Recipe(Base):
     __tablename__ = "recipes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    photo_path = Column(String(500), nullable=True)
-    servings = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    photo_path: Mapped[Optional[str]] = mapped_column(String(500))
+    servings: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    ingredients = relationship("Ingredient", back_populates="recipe", cascade="all, delete-orphan")
-    instructions = relationship("Instruction", back_populates="recipe", cascade="all, delete-orphan")
-    notes = relationship("Note", back_populates="recipe", cascade="all, delete-orphan")
-    recipe_tags = relationship("RecipeTag", back_populates="recipe", cascade="all, delete-orphan")
+    ingredients: Mapped[List["Ingredient"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    instructions: Mapped[List["Instruction"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    notes: Mapped[List["Note"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    recipe_tags: Mapped[List["RecipeTag"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+
 
 class Ingredient(Base):
     __tablename__ = "ingredients"
 
-    id = Column(Integer, primary_key=True, index=True)
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"))
-    group_name = Column(String(100), nullable=True)
-    name = Column(String(255), nullable=False)
-    amount = Column(String(100), nullable=False)
-    is_optional = Column(Boolean, default=False)
-    order_index = Column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"))
+    group_name: Mapped[Optional[str]] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(255))
+    amount: Mapped[str] = mapped_column(String(100))
+    is_optional: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
+    order_index: Mapped[int] = mapped_column(Integer)
 
-    recipe = relationship("Recipe", back_populates="ingredients")
+    recipe: Mapped["Recipe"] = relationship(back_populates="ingredients")
+
 
 class Instruction(Base):
     __tablename__ = "instructions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"))
-    step_number = Column(Integer, nullable=False)
-    description = Column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"))
+    step_number: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(Text)
 
-    recipe = relationship("Recipe", back_populates="instructions")
+    recipe: Mapped["Recipe"] = relationship(back_populates="instructions")
+
 
 class Note(Base):
     __tablename__ = "notes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"))
-    name = Column(String(255), nullable=False)
-    text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255))
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=func.now())
 
-    recipe = relationship("Recipe", back_populates="notes")
+    recipe: Mapped["Recipe"] = relationship(back_populates="notes")
+
 
 class Tag(Base):
     __tablename__ = "tags"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
 
-    recipe_tags = relationship("RecipeTag", back_populates="tag", cascade="all, delete-orphan")
+    recipe_tags: Mapped[List["RecipeTag"]] = relationship(back_populates="tag", cascade="all, delete-orphan")
+
 
 class RecipeTag(Base):
     __tablename__ = "recipe_tags"
 
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
-    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
 
-    recipe = relationship("Recipe", back_populates="recipe_tags")
-    tag = relationship("Tag", back_populates="recipe_tags")
+    recipe: Mapped["Recipe"] = relationship(back_populates="recipe_tags")
+    tag: Mapped["Tag"] = relationship(back_populates="recipe_tags")
+
 
 class MealPlan(Base):
     __tablename__ = "meal_plans"
 
-    id = Column(Integer, primary_key=True, index=True)
-    plan_date = Column(DateTime, nullable=False)
-    recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=True)
-    custom_meal_name = Column(String(255), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    plan_date: Mapped[datetime.datetime] = mapped_column(DateTime)
+    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
+    custom_meal_name: Mapped[Optional[str]] = mapped_column(String(255))
 
-    recipe = relationship("Recipe")
+    recipe: Mapped[Optional["Recipe"]] = relationship()

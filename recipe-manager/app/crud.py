@@ -3,10 +3,11 @@ import shutil
 import uuid
 from pathlib import Path
 from fastapi import UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 from . import models, schemas
 
-from sqlalchemy.orm import joinedload
+_WITH_TAGS = joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -21,19 +22,21 @@ def save_photo(photo_file: UploadFile) -> str:
     return str(file_path)
 
 def get_recipes(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Recipe).options(joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)).offset(skip).limit(limit).all()
+    return db.scalars(select(models.Recipe).options(_WITH_TAGS).offset(skip).limit(limit)).unique().all()
 
 def search_recipes(db: Session, query: str):
-    return db.query(models.Recipe).options(joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)).filter(models.Recipe.name.contains(query)).all()
+    return db.scalars(select(models.Recipe).options(_WITH_TAGS).where(models.Recipe.name.contains(query))).unique().all()
 
 def get_recipes_by_tag(db: Session, tag_name: str):
-    return db.query(models.Recipe).join(models.RecipeTag).join(models.Tag).filter(models.Tag.name == tag_name).all()
+    return db.scalars(
+        select(models.Recipe).join(models.Recipe.recipe_tags).join(models.RecipeTag.tag).where(models.Tag.name == tag_name)
+    ).all()
 
 def get_recipe(db: Session, recipe_id: int):
-    return db.query(models.Recipe).options(joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)).filter(models.Recipe.id == recipe_id).first()
+    return db.get(models.Recipe, recipe_id, options=[_WITH_TAGS])
 
 def get_tag_by_name(db: Session, name: str):
-    return db.query(models.Tag).filter(models.Tag.name == name).first()
+    return db.scalar(select(models.Tag).where(models.Tag.name == name))
 
 def create_tag(db: Session, tag: schemas.TagCreate):
     db_tag = models.Tag(name=tag.name)
@@ -135,7 +138,7 @@ def delete_recipe(db: Session, recipe_id: int):
     return db_recipe
 
 def get_meal_plans(db: Session, start_date: datetime.date, end_date: datetime.date):
-    return db.query(models.MealPlan).filter(models.MealPlan.plan_date.between(start_date, end_date)).all()
+    return db.scalars(select(models.MealPlan).where(models.MealPlan.plan_date.between(start_date, end_date))).all()
 
 def create_meal_plan(db: Session, meal_plan: schemas.MealPlanCreate):
     db_meal_plan = models.MealPlan(**meal_plan.model_dump())
@@ -145,7 +148,7 @@ def create_meal_plan(db: Session, meal_plan: schemas.MealPlanCreate):
     return db_meal_plan
 
 def delete_meal_plan(db: Session, meal_plan_id: int):
-    db_meal_plan = db.query(models.MealPlan).filter(models.MealPlan.id == meal_plan_id).first()
+    db_meal_plan = db.get(models.MealPlan, meal_plan_id)
     if db_meal_plan:
         db.delete(db_meal_plan)
         db.commit()
