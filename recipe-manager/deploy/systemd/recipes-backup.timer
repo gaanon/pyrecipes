@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Recipe Manager backup
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+# Run at the next boot if the server was off at 02:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

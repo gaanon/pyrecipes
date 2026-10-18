@@ -15,7 +15,7 @@ docker compose down           # add -v to also delete the dev database
 
 The app runs at `http://localhost:8010` (`APP_PORT`). `app/` and the scripts are mounted into the container and uvicorn runs with `--reload`, so code changes apply without a restart; rebuild only after changing `requirements.txt` or the `Dockerfile`. MySQL is published on `127.0.0.1:3306` for local DB tools.
 
-**Production** runs on a home server with rootless Podman and the Quadlet units in `deploy/quadlet/` (no source mounts, no published DB port, settings in `~/recipes/app.env` and `~/recipes/db.env`). The app unit's health check calls `GET /healthz`, which returns 503 if the database doesn't answer; an unhealthy container is restarted. The Dockerfile installs a pinned rclone release verified by checksum: to upgrade it, update `RCLONE_VERSION` and both checksums from that release's `SHA256SUMS`.
+**Production** (see `DEPLOY.md`) runs on a home server with rootless Podman and the Quadlet units in `deploy/quadlet/`, plus a daily backup timer in `deploy/systemd/` (no source mounts, no published DB port, settings in `~/recipes/app.env` and `~/recipes/db.env`). The app unit's health check calls `GET /healthz`, which returns 503 if the database doesn't answer; an unhealthy container is restarted. The Dockerfile installs a pinned rclone release verified by checksum: to upgrade it, update `RCLONE_VERSION` and both checksums from that release's `SHA256SUMS`.
 
 ## Tests
 
@@ -32,7 +32,7 @@ Tests use an in-memory SQLite database (see `tests/conftest.py`), overriding the
 
 ## Database
 
-MySQL 8.0 runs as the `db` service. The schema is managed by Alembic (`app/migrations/`): on startup, `app/main.py`'s lifespan calls `db_migrate.run_migrations()`, which upgrades to the latest revision. A database created before Alembic (tables present, no `alembic_version` table) is first stamped at `0001_baseline` rather than recreated.
+MySQL 8.0 runs as the `db` service in dev and the `recipes-db` container in production. The schema is managed by Alembic (`app/migrations/`): on startup, `app/main.py`'s lifespan calls `db_migrate.run_migrations()`, which upgrades to the latest revision. A database created before Alembic (tables present, no `alembic_version` table) is first stamped at `0001_baseline` rather than recreated.
 
 To change the schema, edit `app/models.py`, then generate and review a migration (autogenerate against a scratch SQLite DB, or the real MySQL):
 
@@ -42,6 +42,8 @@ DATABASE_URL=sqlite:////tmp/scratch.db .venv/bin/alembic revision --autogenerate
 ```
 
 Inside the container: `docker compose exec app alembic current` / `alembic history` (production: `podman exec recipes-app alembic current`).
+
+Dev database commands:
 
 ```bash
 # Manual DB backup
@@ -86,4 +88,6 @@ docker compose exec db sh -c 'mysql -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL
 
 **AI recipe import:** `POST /api/process-recipe-image` accepts an image upload and sends it base64-encoded (with its real content type) to the configured vision model through the async OpenAI client, so it doesn't block other requests. It returns a pre-filled `RecipeCreate` JSON that the frontend uses to populate the recipe form. Provider errors return 502, timeouts 504, and an answer that isn't a valid recipe 502, each with a `detail` message the page shows. Routes that use the database are plain `def` (FastAPI runs them in a thread pool); only non-DB routes are `async`.
 
-**Meal planner:** JSON API only (`/api/meal-plan` GET/POST/DELETE) — no dedicated UI template, intended to be consumed by a frontend widget.
+**Meal planner:** a side panel on every page (`templates/components/planner.html`, `static/js/planner.js`) backed by the JSON API `/api/meal-plan` (GET/POST/DELETE). Dates are local calendar days formatted by `static/js/dates.js` (tested in Node by `tests/test_planner_dates.py`).
+
+**Scripts:** `backup_app.py` (JSON export, `mysqldump`, photo archive, optional rclone copy to Google Drive and rotation; exits non-zero on failure) and `import_recipes.py` (restores a JSON export through `crud._apply_recipe`, all-or-nothing). Both run inside the app container. User-facing procedures are in `BACKUP.md`; server setup in `DEPLOY.md`.

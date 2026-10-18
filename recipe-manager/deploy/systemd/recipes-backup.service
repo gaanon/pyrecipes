@@ -1,0 +1,11 @@
+[Unit]
+Description=Recipe Manager - backup (database, JSON export, photos; copied to Google Drive)
+Requires=recipes-app.service
+After=recipes-app.service
+
+[Service]
+Type=oneshot
+# Keeps 14 days of backups locally and on Google Drive. The --gdrive-remote folder must be
+# used only for these backups: rotation deletes anything in it older than --days-to-keep.
+# Remove --gdrive-remote to keep backups on this server only.
+ExecStart=/usr/bin/podman exec recipes-app python backup_app.py --days-to-keep 14 --gdrive-remote gdrive:recipe-backups

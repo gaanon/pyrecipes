@@ -1,90 +1,105 @@
-# Recipe Manager Backup & Restore Guide
+# Backups and restore
 
-This guide provides the definitive instructions for backing up and restoring the Recipe Manager application data.
+`backup_app.py` runs inside the app container and writes a timestamped folder to `~/recipes/backups/` on the server (`/code/backups` in the container):
 
-## 1. Automated Backup
+| File | Contents | Restore with |
+|---|---|---|
+| `database_backup.sql` | Full MySQL dump, including the migration history | `mysql` (complete restore) |
+| `image_backup.tar.gz` | All recipe photos (`~/recipes/uploads/`) | `tar` |
+| `recipes_export.json` | Recipes, tags and the meal plan as JSON | `import_recipes.py` (update/merge) |
 
-A single, self-contained script, `backup_app.py`, handles the entire backup process. It runs entirely within the application's container, making it robust and reliable across different environments.
+With `--gdrive-remote`, the folder is also copied to Google Drive. With `--days-to-keep N`, older backups are deleted, locally and on Google Drive. If any step fails, the script exits non-zero, so the failure shows up in `systemctl` and the journal.
 
-The script will create a timestamped directory inside the `recipe-manager/backups` folder and save three files:
-- `recipes_export.json`: A JSON export of all your recipes.
-- `database_backup.sql`: A complete SQL dump of your database.
-- `image_backup.tar.gz`: A compressed archive of all your uploaded images.
+Server setup is in [DEPLOY.md](DEPLOY.md).
 
-### To run the backup:
-Execute the following command from the `recipe-manager` directory.
+## Daily backup
 
-To run a single backup without deleting old ones:
+The `recipes-backup.timer` unit runs a backup every day at 02:00 (or at the next boot, if the server was off). It keeps 14 days of backups. The settings are on the `ExecStart` line of `~/.config/systemd/user/recipes-backup.service`:
+
+- `--days-to-keep 14`: how many days to keep.
+- `--gdrive-remote gdrive:recipe-backups`: the rclone remote and folder. Use the same path the Pi used (check `crontab -l` on the Pi). **That folder must hold only these backups**: rotation deletes anything in it older than `--days-to-keep`.
+
+After editing the file, run `systemctl --user daemon-reload`.
+
 ```bash
-docker-compose exec app python backup_app.py
+systemctl --user enable --now recipes-backup.timer   # turn on
+systemctl --user list-timers recipes-backup.timer    # next and last run
+journalctl --user -u recipes-backup -n 30            # output of the last run
+systemctl --user start recipes-backup.service        # back up now
 ```
 
-To run a backup and keep only the last 7 days of backups:
+## Google Drive
+
+rclone runs inside the app container and reads `~/.config/rclone/rclone.conf` on the server.
+
+- **Moving from the Pi:** copy the Pi's `~/.config/rclone/rclone.conf` to the same place on the server. It's already authorised.
+- **New setup:** run `podman exec -it recipes-app rclone config`. Add a remote named `gdrive` of type Google Drive, and answer **No** to "Use auto config?". rclone then prints an `rclone authorize "drive" ...` command. Run that on any computer with rclone and a browser, and paste the result back.
+
+Check access with `podman exec recipes-app rclone lsd gdrive:`.
+
+## Restore
+
+To restore from Google Drive, first copy the backup folder back into `~/recipes/backups/`:
+
 ```bash
-docker-compose exec app python backup_app.py --days-to-keep 7
+podman exec recipes-app rclone copy gdrive:recipe-backups/<timestamp> /code/backups/<timestamp>
 ```
 
-## 2. Restore Process
+### Complete restore (database and photos)
 
-### Restore the Database
-To restore the database from a SQL dump, run the following command from the `recipe-manager` directory. Replace the path with the correct path to your backup file.
+This replaces the whole database with the backup. Recipes added since the backup are lost.
 
-**Example:**
 ```bash
-docker-compose exec -T db mysql -u user -ppassword recipe_db < backups/2025-10-20_12-08-54/database_backup.sql
+B=~/recipes/backups/<timestamp>
+systemctl --user stop recipes-app
+podman exec -i recipes-db sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < "$B/database_backup.sql"
+tar -xzf "$B/image_backup.tar.gz" -C ~/recipes/uploads
+systemctl --user start recipes-app
 ```
 
-### Restore the Images
-To restore your uploaded images, extract the `image_backup.tar.gz` archive into the correct directory.
+The dump drops and re-creates every table, including the migration history. When the app starts, it applies any migrations added since the backup was taken.
 
-**Example:**
+### Restoring a dump made on the Raspberry Pi
+
+Dumps from before the move have no migration history table. Restore it the same way as above, but **before starting the app**, delete the current migration history:
+
 ```bash
-tar -xzvf backups/2025-10-20_12-08-54/image_backup.tar.gz -C uploads
+podman exec recipes-db sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "DROP TABLE IF EXISTS alembic_version"'
 ```
 
-### Restore Recipes from JSON
-To restore recipes from a JSON file (which will update existing recipes and create new ones), use the `import_recipes.py` script.
+Otherwise the app would believe the restored, older tables are already up to date. Without the table, it recognises them as the baseline schema and upgrades them.
 
-**Example:**
+### Restore or update recipes from the JSON export
+
+This updates the recipes in the file (matched by id) and adds missing ones; recipes that aren't in the file are left alone. **If the file has a meal plan, it replaces the current one.** Either everything is imported or nothing is: an invalid file changes nothing, and the command exits with an error naming the bad recipe.
+
 ```bash
-docker-compose exec app python import_recipes.py backups/2025-10-20_12-08-54/recipes_export.json
+podman exec recipes-app python import_recipes.py /code/backups/<timestamp>/recipes_export.json
 ```
 
-## 3. Schedule Daily Backups
+Photos aren't in the JSON; restore them from `image_backup.tar.gz` as shown above.
 
-To automate the backup process, you can schedule the `backup_app.py` script to run daily using a cron job.
+## Restore test
 
-1.  Open your crontab for editing:
-    ```bash
-    crontab -e
-    ```
+A backup is only good if it restores. Run this after the move and every few months. It loads the latest backup into a throwaway MySQL container and leaves the real database alone:
 
-2.  Add the following line, making sure to replace `/path/to/your/recipe-manager` with the absolute path to your `recipe-manager` directory:
-    ```bash
-    0 2 * * * cd /path/to/your/recipe-manager && docker-compose exec app python backup_app.py --days-to-keep 7
-    ```
-This will run the backup every day at 2:00 AM.
+```bash
+B=~/recipes/backups/$(ls -t ~/recipes/backups | head -1)
+podman run -d --rm --name restore-test -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=recipe_db docker.io/library/mysql:8.0
+until podman exec restore-test mysqladmin ping -h 127.0.0.1 -uroot -ptest --silent 2>/dev/null; do sleep 2; done
+podman exec -i restore-test mysql -uroot -ptest recipe_db < "$B/database_backup.sql"
+podman exec restore-test mysql -uroot -ptest recipe_db -e "SELECT COUNT(*) AS recipes FROM recipes; SELECT version_num FROM alembic_version"
+tar -tzf "$B/image_backup.tar.gz" | grep -vc '/$'   # number of photos
+podman stop restore-test                              # also deletes it (--rm)
+```
 
-## 4. Deploying Changes
+The recipe and photo counts should match the app. If the `mysql` import fails, the backup is unusable: check `journalctl --user -u recipes-backup`.
 
-When you pull new changes from version control, you may need to rebuild the Docker images to ensure all updates are applied correctly. This is especially important if the `Dockerfile` has been modified.
+## Local development
 
-Use the following commands from the `recipe-manager` directory on your Raspberry Pi to deploy the latest version:
+With the dev setup in `docker-compose.yml`:
 
-1.  **Get the latest code:**
-    ```bash
-    # Example using git
-    git pull
-    ```
-
-2.  **Rebuild the Docker images:**
-    This command reads the `Dockerfile` and builds a new `app` image with all the correct tools and dependencies.
-    ```bash
-    docker-compose build
-    ```
-
-3.  **Restart the services:**
-    This command will stop, recreate, and start your application containers using the newly built image and the latest `docker-compose.yml` configuration.
-    ```bash
-    docker-compose up -d
-    ```
+```bash
+docker compose exec app python backup_app.py   # writes to ./backups/; no Google Drive (rclone isn't configured in dev)
+docker compose exec -T db sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < backups/<timestamp>/database_backup.sql
+```
