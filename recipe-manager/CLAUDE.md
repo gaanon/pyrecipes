@@ -63,6 +63,7 @@ docker-compose exec db mysql -u user -ppassword recipe_db
 | `AI_API_KEY` | API key for the AI provider; falls back to `OPENAI_API_KEY` |
 | `AI_API_BASE_URL` | Optional base URL for an OpenAI-compatible provider (e.g. Ollama, Groq, OpenRouter); omit to use the default OpenAI endpoint |
 | `AI_MODEL` | Model name to use; defaults to `gpt-4o-mini` |
+| `UPLOAD_DIR` | Folder recipe photos are saved to and served from at `/uploads`; defaults to `uploads` (`/code/uploads` in the container). `backup_app.py` archives the same folder |
 
 ## Architecture
 
@@ -79,7 +80,9 @@ docker-compose exec db mysql -u user -ppassword recipe_db
 
 **Data model:** `Recipe` has one-to-many relationships with `Ingredient`, `Instruction`, and `Note`, all using `cascade="all, delete-orphan"`. Tags use a many-to-many join table (`recipe_tags`) with `Tag` as the canonical tag entity; tags are created on-demand in `crud.create_tag`. Tag lookup is case-insensitive and a recipe links each tag once (`crud._link_tags`). Deleting a recipe keeps its meal-plan entries as custom meals with the recipe's name.
 
-**Photo uploads:** Stored under `./uploads/` (volume-mounted). Paths saved as `uploads/<uuid>.<ext>` in `Recipe.photo_path`. Served by FastAPI's `StaticFiles` at `/uploads`.
+**Photo uploads:** Stored in `UPLOAD_DIR` (`./uploads/`, volume-mounted). Paths saved as `uploads/<uuid>.<ext>` in `Recipe.photo_path`. Served by FastAPI's `StaticFiles` at `/uploads`. A replaced or deleted recipe's photo file is removed after the database commit.
+
+**Saving:** `crud._save_recipe` writes a recipe and all its children in one transaction (rolled back on error, removing any newly uploaded photo). Missing records return 404; malformed form data returns 422.
 
 **Form submission flow:** HTML forms POST JSON-encoded ingredient/instruction/note arrays as hidden fields (serialized by frontend JS), then `main.py` deserializes them with `json.loads()` before building Pydantic schemas.
 

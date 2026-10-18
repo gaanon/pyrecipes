@@ -1,7 +1,9 @@
 import datetime
+import os
 import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 from fastapi import UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
@@ -9,17 +11,23 @@ from . import models, schemas
 
 _WITH_TAGS = joinedload(models.Recipe.recipe_tags).joinedload(models.RecipeTag.tag)
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# Stored in Recipe.photo_path and served by the /uploads mount
+PHOTO_PATH_PREFIX = "uploads/"
 
 def save_photo(photo_file: UploadFile) -> str:
-    """Saves the uploaded photo and returns the path."""
+    """Saves the uploaded photo and returns its photo_path."""
     ext = Path(photo_file.filename).suffix
     filename = f"{uuid.uuid4()}{ext}"
-    file_path = UPLOAD_DIR / filename
-    with file_path.open("wb") as buffer:
+    with (UPLOAD_DIR / filename).open("wb") as buffer:
         shutil.copyfileobj(photo_file.file, buffer)
-    return str(file_path)
+    return PHOTO_PATH_PREFIX + filename
+
+def delete_photo(photo_path: Optional[str]):
+    """Removes a photo saved by save_photo; anything else (no photo, the placeholder) is left alone."""
+    if photo_path and photo_path.startswith(PHOTO_PATH_PREFIX):
+        (UPLOAD_DIR / Path(photo_path).name).unlink(missing_ok=True)
 
 def get_recipes(db: Session, skip: int = 0, limit: int = 100):
     return db.scalars(select(models.Recipe).options(_WITH_TAGS).offset(skip).limit(limit)).unique().all()
@@ -42,8 +50,7 @@ def get_tag_by_name(db: Session, name: str):
 def create_tag(db: Session, tag: schemas.TagCreate):
     db_tag = models.Tag(name=tag.name)
     db.add(db_tag)
-    db.commit()
-    db.refresh(db_tag)
+    db.flush()  # committed with the rest of the save; flushed so later lookups find it
     return db_tag
 
 def _link_tags(db: Session, db_recipe: models.Recipe, tag_names: list[str]):
@@ -58,78 +65,47 @@ def _link_tags(db: Session, db_recipe: models.Recipe, tag_names: list[str]):
             db_tag = create_tag(db, schemas.TagCreate(name=tag_name))
         if db_tag.id not in linked_tag_ids:
             linked_tag_ids.add(db_tag.id)
-            db.add(models.RecipeTag(recipe_id=db_recipe.id, tag_id=db_tag.id))
+            db_recipe.recipe_tags.append(models.RecipeTag(tag=db_tag))
 
-def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: UploadFile = None):
-    # Create the main recipe object
-    photo_path = None
-    if photo_file:
-        photo_path = save_photo(photo_file)
-
-    db_recipe = models.Recipe(name=recipe.name, servings=recipe.servings, photo_path=photo_path)
-    db.add(db_recipe)
-    db.commit()
-    db.refresh(db_recipe)
-
-    # Handle Ingredients
-    for ingredient_data in recipe.ingredients:
-        db_ingredient = models.Ingredient(**ingredient_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_ingredient)
-
-    # Handle Instructions
-    for instruction_data in recipe.instructions:
-        db_instruction = models.Instruction(**instruction_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_instruction)
-
-    # Handle Notes
-    for note_data in recipe.notes:
-        db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_note)
-
+def _apply_recipe(db: Session, db_recipe: models.Recipe, recipe: schemas.RecipeCreate):
+    """Sets the recipe's fields and replaces its ingredients, instructions, notes and tags."""
+    db_recipe.name = recipe.name
+    db_recipe.servings = recipe.servings
+    db_recipe.ingredients = [models.Ingredient(**i.model_dump()) for i in recipe.ingredients]
+    db_recipe.instructions = [models.Instruction(**i.model_dump()) for i in recipe.instructions]
+    db_recipe.notes = [models.Note(**n.model_dump()) for n in recipe.notes]
+    db_recipe.recipe_tags = []
     _link_tags(db, db_recipe, recipe.tags)
 
-    db.commit()
+def _save_recipe(db: Session, db_recipe: models.Recipe, recipe: schemas.RecipeCreate, photo_file: Optional[UploadFile]):
+    """Saves everything in one transaction. On failure nothing is kept, including a newly uploaded photo;
+    a replaced photo file is only deleted once the new one is committed."""
+    new_photo = save_photo(photo_file) if photo_file and photo_file.filename else None
+    old_photo = db_recipe.photo_path
+    try:
+        db.add(db_recipe)
+        _apply_recipe(db, db_recipe, recipe)
+        if new_photo:
+            db_recipe.photo_path = new_photo
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_photo(new_photo)
+        raise
+    if new_photo:
+        delete_photo(old_photo)
     db.refresh(db_recipe)
     return db_recipe
 
-def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, photo_file: UploadFile = None):
+def create_recipe(db: Session, recipe: schemas.RecipeCreate, photo_file: Optional[UploadFile] = None):
+    return _save_recipe(db, models.Recipe(), recipe, photo_file)
+
+def update_recipe(db: Session, recipe_id: int, recipe: schemas.RecipeCreate, photo_file: Optional[UploadFile] = None):
+    """Returns None if the recipe doesn't exist."""
     db_recipe = get_recipe(db, recipe_id)
     if not db_recipe:
         return None
-
-    # Update main recipe fields
-    db_recipe.name = recipe.name
-    db_recipe.servings = recipe.servings
-
-    if photo_file:
-        db_recipe.photo_path = save_photo(photo_file)
-
-    # Clear existing relationships
-    db_recipe.ingredients = []
-    db_recipe.instructions = []
-    db_recipe.notes = []
-    db_recipe.recipe_tags = []
-
-    # Handle Ingredients
-    for ingredient_data in recipe.ingredients:
-        db_ingredient = models.Ingredient(**ingredient_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_ingredient)
-
-    # Handle Instructions
-    for instruction_data in recipe.instructions:
-        db_instruction = models.Instruction(**instruction_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_instruction)
-
-    # Handle Notes
-    for note_data in recipe.notes:
-        db_note = models.Note(**note_data.model_dump(), recipe_id=db_recipe.id)
-        db.add(db_note)
-
-    _link_tags(db, db_recipe, recipe.tags)
-
-    db.commit()
-    db.refresh(db_recipe)
-    return db_recipe
+    return _save_recipe(db, db_recipe, recipe, photo_file)
 
 def delete_recipe(db: Session, recipe_id: int):
     db_recipe = get_recipe(db, recipe_id)
@@ -142,6 +118,7 @@ def delete_recipe(db: Session, recipe_id: int):
         )
         db.delete(db_recipe)
         db.commit()
+        delete_photo(db_recipe.photo_path)
     return db_recipe
 
 def get_meal_plans(db: Session, start_date: datetime.date, end_date: datetime.date):

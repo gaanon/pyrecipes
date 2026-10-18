@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from typing import List, Optional
 import datetime
 
@@ -86,7 +86,11 @@ class MealPlanBase(BaseModel):
     custom_meal_name: Optional[str] = None
 
 class MealPlanCreate(MealPlanBase):
-    pass
+    @model_validator(mode="after")
+    def _recipe_or_custom_meal(self):
+        if self.recipe_id is None and not (self.custom_meal_name or "").strip():
+            raise ValueError("a meal needs either a recipe_id or a custom_meal_name")
+        return self
 
 class MealPlan(MealPlanBase):
     id: int

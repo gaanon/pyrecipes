@@ -174,7 +174,7 @@ def main(days_to_keep, gdrive_remote):
         db_path = os.path.join(backup_dir, "database_backup.sql")
         backup_database(db_path)
 
-        images_source_dir = "/code/uploads"
+        images_source_dir = os.path.abspath(os.getenv("UPLOAD_DIR", "/code/uploads"))  # same setting as app/crud.py
         images_path = os.path.join(backup_dir, "image_backup.tar.gz")
         backup_images(images_source_dir, images_path)
 
