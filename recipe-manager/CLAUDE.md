@@ -15,7 +15,7 @@ docker compose down           # add -v to also delete the dev database
 
 The app runs at `http://localhost:8010` (`APP_PORT`). `app/` and the scripts are mounted into the container and uvicorn runs with `--reload`, so code changes apply without a restart; rebuild only after changing `requirements.txt` or the `Dockerfile`. MySQL is published on `127.0.0.1:3306` for local DB tools.
 
-**Production** runs on a home server with rootless Podman and the Quadlet units in `deploy/quadlet/` (no source mounts, no published DB port, settings in `~/recipes/app.env` and `~/recipes/db.env`).
+**Production** runs on a home server with rootless Podman and the Quadlet units in `deploy/quadlet/` (no source mounts, no published DB port, settings in `~/recipes/app.env` and `~/recipes/db.env`). The app unit's health check calls `GET /healthz`, which returns 503 if the database doesn't answer; an unhealthy container is restarted. The Dockerfile installs a pinned rclone release verified by checksum: to upgrade it, update `RCLONE_VERSION` and both checksums from that release's `SHA256SUMS`.
 
 ## Tests
 

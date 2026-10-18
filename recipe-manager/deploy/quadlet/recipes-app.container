@@ -13,6 +13,14 @@ Environment=PYTHONPATH=/code
 Volume=%h/recipes/uploads:/code/uploads:Z
 Volume=%h/recipes/backups:/code/backups:Z
 Volume=%h/.config/rclone:/root/.config/rclone:Z
+# /healthz checks the app and its database connection (the image has no curl, so use Python)
+HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+# Stop a container that stays unhealthy; Restart=always below starts a fresh one
+HealthOnFailure=kill
 
 [Service]
 Restart=always

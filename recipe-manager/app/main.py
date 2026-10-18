@@ -3,11 +3,14 @@ from fastapi.exceptions import RequestValidationError
 from typing import List, Optional
 import datetime
 import json
+import logging
 from contextlib import asynccontextmanager
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from . import models, crud, database, schemas, ai_service, db_migrate, utils
 from .database import get_db
@@ -17,6 +20,8 @@ async def lifespan(app: FastAPI):
     # Create or upgrade the database schema on startup
     db_migrate.run_migrations(database.engine)
     yield
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(lifespan=lifespan)
 
@@ -59,6 +64,16 @@ def recipe_form(
     except ValidationError as e:
         raise RequestValidationError(e.errors(include_url=False))
 
+
+@app.get("/healthz")
+def healthz(db: Session = Depends(get_db)):
+    """For the container health check: OK only if the database answers too."""
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        logger.exception("Health check failed: database unreachable")
+        return JSONResponse(status_code=503, content={"status": "error", "detail": "database unreachable"})
+    return {"status": "ok"}
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request, db: Session = Depends(get_db), search: str = None):
