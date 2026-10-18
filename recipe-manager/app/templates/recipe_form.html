@@ -33,7 +33,7 @@
             </div>
             <div class="col-md-6">
                 <label for="tags" class="form-label">Tags (comma-separated)</label>
-                <input type="text" class="form-control" id="tags" name="tags" value="{{ recipe.tags|map(attribute='name')|join(', ') if recipe else '' }}">
+                <input type="text" class="form-control" id="tags" name="tags" value="{{ recipe.recipe_tags|map(attribute='tag.name')|join(', ') if recipe else '' }}">
             </div>
             <div class="col-12">
                 <label for="photo" class="form-label">Photo</label>

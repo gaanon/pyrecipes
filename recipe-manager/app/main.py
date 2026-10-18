@@ -41,7 +41,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), search: str
         recipes = crud.search_recipes(db=db, query=search)
     else:
         recipes = crud.get_recipes(db=db)
-    return templates.TemplateResponse("index.html", {"request": request, "recipes": recipes, "search": search})
+    return templates.TemplateResponse(request, "index.html", {"recipes": recipes, "search": search})
 
 @app.post("/api/process-recipe-image", response_model=schemas.RecipeCreate)
 async def process_recipe_image(file: UploadFile = File(...)):
@@ -50,13 +50,13 @@ async def process_recipe_image(file: UploadFile = File(...)):
 
 @app.get("/recipe/new", response_class=HTMLResponse)
 async def new_recipe_form(request: Request):
-    return templates.TemplateResponse("recipe_form.html", {"request": request, "recipe": None})
+    return templates.TemplateResponse(request, "recipe_form.html", {"recipe": None})
 
 @app.get("/recipe/{id}", response_class=HTMLResponse)
 async def recipe_detail(request: Request, id: int, db: Session = Depends(get_db)):
     from . import crud
     recipe = crud.get_recipe(db, recipe_id=id)
-    return templates.TemplateResponse("recipe_detail.html", {"request": request, "recipe": recipe})
+    return templates.TemplateResponse(request, "recipe_detail.html", {"recipe": recipe})
 
 @app.post("/recipe/new", response_class=RedirectResponse)
 async def create_recipe(
@@ -85,7 +85,7 @@ async def create_recipe(
 async def edit_recipe_form(request: Request, id: int, db: Session = Depends(get_db)):
     from . import crud
     recipe = crud.get_recipe(db, recipe_id=id)
-    return templates.TemplateResponse("recipe_form.html", {"request": request, "recipe": recipe})
+    return templates.TemplateResponse(request, "recipe_form.html", {"recipe": recipe})
 
 @app.post("/recipe/{id}/edit", response_class=RedirectResponse)
 async def edit_recipe(
@@ -138,4 +138,4 @@ def delete_meal_from_plan(meal_plan_id: int, db: Session = Depends(get_db)):
 async def view_recipes_by_tag(request: Request, tag_name: str, db: Session = Depends(get_db)):
     from . import crud
     recipes = crud.get_recipes_by_tag(db=db, tag_name=tag_name)
-    return templates.TemplateResponse("index.html", {"request": request, "recipes": recipes, "tag_name": tag_name})
+    return templates.TemplateResponse(request, "index.html", {"recipes": recipes, "tag_name": tag_name})
