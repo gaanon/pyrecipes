@@ -29,6 +29,10 @@ python3.11 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 
 Tests use an in-memory SQLite database (see `tests/conftest.py`), overriding the `get_db` dependency, so no MySQL is needed.
 
+## Dependencies
+
+`requirements.in` lists top-level deps; `requirements.txt` is the fully pinned set the Dockerfile installs (regeneration command in its header). Add or bump deps in `requirements.in`, regenerate, then run the tests.
+
 ## Database
 
 MySQL 8.0 runs as the `db` service. Tables are auto-created at startup via `models.Base.metadata.create_all()` in `app/main.py`'s lifespan handler — there are no migration files.
