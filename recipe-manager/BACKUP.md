@@ -39,7 +39,7 @@ To restore your uploaded images, extract the `image_backup.tar.gz` archive into 
 
 **Example:**
 ```bash
-tar -xzvf backups/2025-10-20_12-08-54/image_backup.tar.gz -C app/static/uploads
+tar -xzvf backups/2025-10-20_12-08-54/image_backup.tar.gz -C uploads
 ```
 
 ### Restore Recipes from JSON
