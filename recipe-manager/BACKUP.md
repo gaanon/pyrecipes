@@ -30,7 +30,7 @@ systemctl --user start recipes-backup.service        # back up now
 
 ## Google Drive
 
-rclone runs inside the app container and reads `~/.config/rclone/rclone.conf` on the server.
+rclone runs inside the app container and reads `~/.config/rclone/rclone.conf` on the server. Do **one** of these:
 
 - **Moving from the Pi:** copy the Pi's `~/.config/rclone/rclone.conf` to the same place on the server. It's already authorised.
 - **New setup:** run `podman exec -it recipes-app rclone config`. Add a remote named `gdrive` of type Google Drive, and answer **No** to "Use auto config?". rclone then prints an `rclone authorize "drive" ...` command. Run that on any computer with rclone and a browser, and paste the result back.

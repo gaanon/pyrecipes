@@ -39,7 +39,7 @@ cp ~/pyrecipes/recipe-manager/deploy/quadlet/app.env.example ~/recipes/app.env
 chmod 600 ~/recipes/*.env
 ```
 
-Edit both. Generate the passwords with `openssl rand -hex 24`; hex keeps them safe to use inside `DATABASE_URL`, which would otherwise need special characters URL-encoded. The password in `DATABASE_URL` (`app.env`) must match `MYSQL_PASSWORD` (`db.env`). Add `AI_API_KEY` and `AI_MODEL` for the recipe scanner.
+Edit both. **Don't put quotes around values**: Podman reads these files literally, so `AI_MODEL="x"` sets the model to `"x"`, quotes included. Generate the passwords with `openssl rand -hex 24`; hex keeps them safe to use inside `DATABASE_URL`, which would otherwise need special characters URL-encoded. The password in `DATABASE_URL` (`app.env`) must match `MYSQL_PASSWORD` (`db.env`). Add `AI_API_KEY` and `AI_MODEL` for the recipe scanner.
 
 Build the image and install the units:
 
@@ -81,7 +81,13 @@ Do this as a **trial run** first while the Pi keeps running, check everything, t
 
    Note the counts. The photo count should be at least the `with_photo` count.
 
-2. **Copy to the server:** `~/pi-recipe_db.sql`, `~/pi-uploads.tar.gz` and the Pi's `~/.config/rclone/rclone.conf` (into `~/.config/rclone/` on the server, so backups keep their Google Drive access).
+2. **Copy to the server.** The files from step 1 are in the Pi user's home folder. Run this on the server; skip the second line if you've already copied `rclone.conf`, which gives backups their Google Drive access:
+
+   ```bash
+   scp <pi-user>@<pi-host>:'~/pi-recipe_db.sql ~/pi-uploads.tar.gz' ~/
+   scp <pi-user>@<pi-host>:'~/.config/rclone/rclone.conf' ~/.config/rclone/
+   chmod 600 ~/.config/rclone/rclone.conf
+   ```
 
 3. **On the server**, restore with the app still stopped:
 
@@ -148,6 +154,8 @@ systemctl --user list-timers recipes-backup.timer
 ## Troubleshooting
 
 - **`recipes-app.service` doesn't exist after `daemon-reload`.** Quadlet rejected a unit file. See why with `/usr/libexec/podman/quadlet -dryrun -user` (the path can differ by distribution).
+- **First start of `recipes-db` takes minutes.** The first time, it downloads the MySQL image (about 600 MB) and creates the database; `systemctl` waits until MySQL is ready. Watch with `journalctl --user -u recipes-db -f`.
+- **The recipe scanner fails.** The page shows the reason, and `journalctl --user -u recipes-app | grep -i provider` has the details. Check the values in `app.env` have no quotes (`podman exec recipes-app env | grep ^AI_`).
 - **The app keeps restarting.** Look at `journalctl --user -u recipes-app -n 100`. A typo in `DATABASE_URL`, or a password that doesn't match `db.env`, shows up as a database connection error on startup.
 - **The database won't start after changing `db.env`.** MySQL only reads `MYSQL_*` on the volume's first start; changing them later doesn't change the existing users. Change the password in MySQL itself, or start over with an empty volume.
 - **Port 8010 is already in use.** Change the left side of `PublishPort=8010:8000` in `recipes-app.container`, then reinstall the unit and reload.

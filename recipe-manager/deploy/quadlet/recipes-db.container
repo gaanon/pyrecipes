@@ -7,7 +7,9 @@ Image=docker.io/library/mysql:8.0
 Network=recipes.network
 Volume=recipes-db.volume:/var/lib/mysql
 EnvironmentFile=%h/recipes/db.env
-HealthCmd=mysqladmin ping -h localhost --silent
+# TCP (127.0.0.1), not the socket (localhost): during first-start setup MySQL runs a temporary
+# server on the socket only, which must not count as ready
+HealthCmd=mysqladmin ping -h 127.0.0.1 --silent
 HealthInterval=10s
 HealthTimeout=5s
 HealthRetries=5

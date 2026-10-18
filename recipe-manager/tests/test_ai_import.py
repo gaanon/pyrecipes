@@ -156,3 +156,13 @@ def test_scan_does_not_block_other_requests(provider):
     asyncio.run(scenario())
 
     assert finished == ["page", "scan"]
+
+
+def test_connection_failure_logs_the_underlying_reason(client, provider, caplog):
+    # httpx errors often have an empty message, so the log must name the error type too
+    provider.error = httpx2.ConnectError("")
+
+    response = _scan(client)
+
+    assert response.status_code == 502
+    assert "ConnectError" in caplog.text

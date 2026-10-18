@@ -36,6 +36,13 @@ def _get_client(http_client: Optional[httpx2.AsyncClient] = None) -> openai.Asyn
     )
 
 
+def _root_cause(error: BaseException) -> str:
+    """The innermost exception as "Type: message"; network errors often have an empty message."""
+    while error.__cause__ is not None:
+        error = error.__cause__
+    return f"{type(error).__name__}: {error}".rstrip(": ")
+
+
 def _get_model() -> str:
     return os.environ.get("AI_MODEL") or "gpt-4o-mini"
 
@@ -132,7 +139,7 @@ async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCre
         raise AIServiceError(f"The AI provider returned HTTP {e.status_code}")
     except openai.APIConnectionError as e:
         logger.error("Could not reach the AI provider at %s (model=%s): %s",
-                     os.environ.get("AI_API_BASE_URL") or "default", model, e.__cause__ or e)
+                     os.environ.get("AI_API_BASE_URL") or "default", model, _root_cause(e))
         raise AIServiceError(f"Could not reach the AI provider: {e}")
     except openai.OpenAIError as e:
         logger.exception("AI request failed (model=%s)", model)
