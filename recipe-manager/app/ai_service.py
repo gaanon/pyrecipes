@@ -16,7 +16,7 @@ def _get_client() -> OpenAI:
 
 
 def _get_model() -> str:
-    return os.environ.get("AI_MODEL", "gpt-4o-mini")
+    return os.environ.get("AI_MODEL") or "gpt-4o-mini"
 
 def get_recipe_json_prompt():
     return """
@@ -110,6 +110,7 @@ async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCre
         return schemas.RecipeCreate(**recipe_dict)
 
     except Exception as e:
-        print(f"An error occurred with the OpenAI API call: {e}")
+        base_url = os.environ.get("AI_API_BASE_URL") or "https://api.openai.com/v1 (default)"
+        print(f"An error occurred with the OpenAI API call (base_url={base_url}, model={_get_model()}): {e}")
         # Return an empty or default schema on error
         return schemas.RecipeCreate(name="Error: Could not parse recipe", ingredients=[], instructions=[], tags=[])
