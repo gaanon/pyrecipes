@@ -91,6 +91,23 @@ def get_recipe_json_prompt():
     - The final output must be a single, valid JSON object and nothing else. Do not include any explanatory text before or after the JSON.
     """
 
+def _answer_text(response, model: str) -> Optional[str]:
+    """The answer's text; if there is none, raises AIServiceError saying why (refusal, token limit...)."""
+    if not response.choices:
+        raise AIServiceError("The AI returned no answer")
+    choice = response.choices[0]
+    if choice.message.content:
+        return choice.message.content
+    refusal = getattr(choice.message, "refusal", None)
+    logger.warning("AI returned no text (model=%s, finish_reason=%s, refusal=%r, usage=%s)",
+                   model, choice.finish_reason, refusal, response.usage)
+    if refusal:
+        raise AIServiceError(f"The AI declined to read the image: {refusal}")
+    if choice.finish_reason == "length":
+        raise AIServiceError("The AI hit its token limit before writing the recipe (finish_reason=length)")
+    raise AIServiceError(f"The AI returned an empty answer (finish_reason={choice.finish_reason})")
+
+
 def _extract_json(content: Optional[str]) -> dict:
     """Finds the JSON object in the model's answer, which may be wrapped in a Markdown fence or prose."""
     if not content:
@@ -145,7 +162,7 @@ async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCre
         logger.exception("AI request failed (model=%s)", model)
         raise AIServiceError(f"Could not reach the AI provider: {e}")
 
-    recipe_dict = _extract_json(response.choices[0].message.content if response.choices else None)
+    recipe_dict = _extract_json(_answer_text(response, model))
 
     # Number ingredients and steps in the order the model listed them
     for i, ing in enumerate(recipe_dict.get("ingredients") or []):

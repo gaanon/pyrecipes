@@ -27,10 +27,11 @@ PANCAKES = {
 }
 
 
-def _completion(content):
+def _completion(content, finish_reason="stop", refusal=None):
     return {
         "id": "chatcmpl-test", "object": "chat.completion", "created": 0, "model": "test-model",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": content, "refusal": refusal},
+                     "finish_reason": finish_reason}],
     }
 
 
@@ -166,3 +167,23 @@ def test_connection_failure_logs_the_underlying_reason(client, provider, caplog)
 
     assert response.status_code == 502
     assert "ConnectError" in caplog.text
+
+
+def test_answer_cut_off_by_the_token_limit_says_so(client, provider, caplog):
+    # e.g. the model spent its whole token budget thinking and wrote no text
+    provider.reply = _completion(None, finish_reason="length")
+
+    response = _scan(client)
+
+    assert response.status_code == 502
+    assert "token limit" in response.json()["detail"]
+    assert "finish_reason=length" in caplog.text
+
+
+def test_refusal_is_reported(client, provider):
+    provider.reply = _completion(None, refusal="I can't help with that.")
+
+    response = _scan(client)
+
+    assert response.status_code == 502
+    assert "I can't help with that." in response.json()["detail"]
