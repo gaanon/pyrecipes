@@ -119,6 +119,7 @@ if [ "$1" = "--version" ]; then echo "$FAKE_VERSION"; exit 0; fi
 printf '%s\\n' "$@" > "$FAKE_LOG/args"
 for a in "$@"; do case "$a" in --defaults-extra-file=*) cat "${a#*=}" > "$FAKE_LOG/defaults";; esac; done
 if [ -n "$FAKE_FAIL" ]; then echo "-- partial output"; echo "Access denied for user" >&2; exit 2; fi
+if [ -n "$FAKE_SANDBOX" ]; then echo '/*M!999999\\- enable the sandbox mode */'; fi
 echo "CREATE TABLE \\`recipes\\` (id int);"
 """
 
@@ -204,3 +205,15 @@ def test_backup_fails_with_non_zero_exit_when_the_dump_fails(fake_mysqldump, tmp
         backup_app.main(0, "", backup_base_dir=tmp_path / "backups", upload_dir=tmp_path, session_factory=Session)
 
     assert exit_info.value.code != 0
+
+
+def test_dump_restores_with_the_mysql_client(fake_mysqldump, tmp_path, monkeypatch):
+    # MariaDB's mysqldump (the one in the image) starts dumps with a "sandbox mode" line
+    # that MySQL's own mysql client rejects ("Unknown command '\\-'"), breaking restores
+    monkeypatch.setenv("FAKE_SANDBOX", "1")
+
+    backup_app.backup_database(tmp_path / "dump.sql")
+
+    dump = (tmp_path / "dump.sql").read_text()
+    assert "sandbox" not in dump
+    assert dump.startswith("CREATE TABLE `recipes`")

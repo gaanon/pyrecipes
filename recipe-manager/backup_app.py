@@ -86,6 +86,19 @@ def _option_value(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+# MariaDB's mysqldump (10.5.25+/11.4.2+) starts every dump with this line, which MySQL's mysql
+# client rejects ("Unknown command '\-'"), so the dump couldn't be restored into MySQL
+_MARIADB_SANDBOX_LINE_PREFIX = "/*M!999999"
+
+
+def _write_without_mariadb_sandbox_line(source: Path, destination: Path):
+    with open(source) as src, open(destination, "w") as dst:
+        first = src.readline()
+        if not first.startswith(_MARIADB_SANDBOX_LINE_PREFIX):
+            dst.write(first)
+        shutil.copyfileobj(src, dst)
+
+
 def backup_database(file_path, db_url=None):
     """Dumps the database to a SQL file. Raises BackupError (leaving no file behind) on failure."""
     print("Backing up the database...")
@@ -117,7 +130,7 @@ def backup_database(file_path, db_url=None):
             raise BackupError(f"mysqldump failed (exit {result.returncode}): {result.stderr.strip()}")
         if "CREATE TABLE" not in partial.read_text():
             raise BackupError("mysqldump produced no tables")
-        partial.replace(file_path)
+        _write_without_mariadb_sandbox_line(partial, file_path)
     finally:
         os.unlink(options.name)
         partial.unlink(missing_ok=True)
