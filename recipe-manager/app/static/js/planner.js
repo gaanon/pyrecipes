@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
+    const { getWeekRange, formatDate } = window.PlannerDates;
+
     // --- Planner Panel Elements ---
     const togglePlannerBtn = document.getElementById('toggle-planner-btn');
     const plannerPanel = document.getElementById('planner-panel');
@@ -24,23 +26,8 @@ document.addEventListener('DOMContentLoaded', function () {
     let plannerCurrentDate = new Date();
     let modalCurrentDate = new Date();
     let weekData = [];
-    let selectedPlannerDate = new Date().toISOString().split('T')[0];
+    let selectedPlannerDate = formatDate(new Date());
     let recipeToAdd = null;
-
-    // --- Utility Functions ---
-    function getWeekRange(date) {
-        const start = new Date(date);
-        const day = start.getDay();
-        const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday as start of week
-        start.setDate(diff);
-        const end = new Date(start);
-        end.setDate(start.getDate() + 6);
-        return { start, end };
-    }
-
-    function formatDate(date) {
-        return date.toISOString().split('T')[0];
-    }
 
     // --- Planner Panel Logic ---
     function togglePlanner() {
