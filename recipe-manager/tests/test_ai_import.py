@@ -178,6 +178,7 @@ def test_answer_cut_off_by_the_token_limit_says_so(client, provider, caplog):
     assert response.status_code == 502
     assert "token limit" in response.json()["detail"]
     assert "finish_reason=length" in caplog.text
+    assert "image=image/jpeg, 11 bytes" in caplog.text  # what was sent, to spot unsupported formats
 
 
 def test_refusal_is_reported(client, provider):
