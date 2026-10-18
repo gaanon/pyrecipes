@@ -1,0 +1,23 @@
+[Unit]
+Description=Recipe Manager - MySQL
+
+[Container]
+ContainerName=recipes-db
+Image=docker.io/library/mysql:8.0
+Network=recipes.network
+Volume=recipes-db.volume:/var/lib/mysql
+EnvironmentFile=%h/recipes/db.env
+HealthCmd=mysqladmin ping -h localhost --silent
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=30s
+# systemd only reports the unit as started once the healthcheck passes (Podman >= 5.0)
+Notify=healthy
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

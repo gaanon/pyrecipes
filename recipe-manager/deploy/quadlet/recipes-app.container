@@ -1,0 +1,21 @@
+[Unit]
+Description=Recipe Manager - App
+Requires=recipes-db.service
+After=recipes-db.service
+
+[Container]
+ContainerName=recipes-app
+Image=localhost/recipe-manager:latest
+Network=recipes.network
+PublishPort=8010:8000
+EnvironmentFile=%h/recipes/app.env
+Environment=PYTHONPATH=/code
+Volume=%h/recipes/uploads:/code/uploads:Z
+Volume=%h/recipes/backups:/code/backups:Z
+Volume=%h/.config/rclone:/root/.config/rclone:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
