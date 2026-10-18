@@ -1,27 +1,43 @@
-import os
-import sys
-import json
-import subprocess
-import datetime
 import argparse
+import datetime
+import json
+import os
 import shutil
-from sqlalchemy.orm import sessionmaker, joinedload
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from sqlalchemy import select
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import joinedload, sessionmaker
+
 from app.database import engine
-from app.models import Recipe, RecipeTag
+from app.models import MealPlan, Recipe, RecipeTag
+
+BACKUP_BASE_DIR = Path(os.getenv("BACKUP_DIR", "/code/backups"))
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/code/uploads"))  # same setting as app/crud.py
+
+
+class BackupError(Exception):
+    pass
+
 
 def export_recipes_to_json(session, file_path):
-    """Exports all recipes to a JSON file."""
+    """Exports all recipes and the meal plan to a JSON file (restorable with import_recipes.py)."""
     print("Exporting recipes to JSON...")
-    recipes = session.query(Recipe).options(
-        joinedload(Recipe.ingredients),
-        joinedload(Recipe.instructions),
-        joinedload(Recipe.notes),
-        joinedload(Recipe.recipe_tags).joinedload(RecipeTag.tag)
-    ).all()
+    recipes = session.scalars(
+        select(Recipe).options(
+            joinedload(Recipe.ingredients),
+            joinedload(Recipe.instructions),
+            joinedload(Recipe.notes),
+            joinedload(Recipe.recipe_tags).joinedload(RecipeTag.tag),
+        ).order_by(Recipe.id)
+    ).unique().all()
 
-    output_data = {"recipes": []}
+    output_data = {"recipes": [], "meal_plans": []}
     for recipe in recipes:
-        recipe_data = {
+        output_data["recipes"].append({
             "id": recipe.id,
             "name": recipe.name,
             "servings": recipe.servings,
@@ -32,55 +48,89 @@ def export_recipes_to_json(session, file_path):
                     "id": ing.id, "name": ing.name, "amount": ing.amount,
                     "group_name": ing.group_name, "is_optional": ing.is_optional,
                     "order_index": ing.order_index
-                } for ing in sorted(recipe.ingredients, key=lambda x: x.order_index)
+                } for ing in recipe.ingredients
             ],
             "instructions": [
-                {
-                    "id": inst.id, "step_number": inst.step_number,
-                    "description": inst.description
-                } for inst in sorted(recipe.instructions, key=lambda x: x.step_number)
+                {"id": inst.id, "step_number": inst.step_number, "description": inst.description}
+                for inst in recipe.instructions
             ],
-            "notes": [
-                {"id": note.id, "name": note.name, "text": note.text}
-                for note in recipe.notes
-            ]
-        }
-        output_data["recipes"].append(recipe_data)
+            "notes": [{"id": note.id, "name": note.name, "text": note.text} for note in recipe.notes],
+        })
+    for meal in session.scalars(select(MealPlan).order_by(MealPlan.plan_date, MealPlan.id)):
+        output_data["meal_plans"].append({
+            "id": meal.id,
+            "plan_date": meal.plan_date.isoformat(),
+            "recipe_id": meal.recipe_id,
+            "custom_meal_name": meal.custom_meal_name,
+        })
 
     with open(file_path, 'w') as f:
         json.dump(output_data, f, indent=4)
-    print(f"Successfully exported recipes to {file_path}")
+    print(f"Exported {len(output_data['recipes'])} recipes and {len(output_data['meal_plans'])} planned meals to {file_path}")
 
-def backup_database(file_path):
-    """Dumps the database to a SQL file."""
+def _tls_args() -> list[str]:
+    """TLS options for whichever mysqldump is installed.
+
+    MySQL 8's default login (caching_sha2_password) needs an encrypted connection (or an RSA
+    key exchange), so encrypt; the server's certificate is self-signed, so don't verify it.
+    The connection never leaves the private container network.
+    """
+    version = subprocess.run(["mysqldump", "--version"], capture_output=True, text=True).stdout
+    if "MariaDB" in version:  # Debian's default-mysql-client, used in the image
+        return ["--ssl", "--skip-ssl-verify-server-cert"]
+    return ["--ssl-mode=REQUIRED"]
+
+
+def _option_value(value: str) -> str:
+    # Quoted for the my.cnf format, so passwords with spaces, #, quotes etc. survive
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def backup_database(file_path, db_url=None):
+    """Dumps the database to a SQL file. Raises BackupError (leaving no file behind) on failure."""
     print("Backing up the database...")
-    db_url = os.getenv("DATABASE_URL")
+    db_url = db_url or os.getenv("DATABASE_URL")
     if not db_url:
-        print("Error: DATABASE_URL environment variable not set.")
-        sys.exit(1)
+        raise BackupError("DATABASE_URL environment variable not set")
+    url = make_url(db_url)
+    file_path = Path(file_path)
+    partial = file_path.with_name(file_path.name + ".partial")
 
-    user = db_url.split('//')[1].split(':')[0]
-    password = db_url.split(':')[2].split('@')[0]
-    host = db_url.split('@')[1].split('/')[0]
-    dbname = db_url.split('/')[-1]
-
-    command = [
-        "mysqldump", f"--user={user}", f"--password={password}",
-        f"--host={host}", "--ssl=false", "--no-tablespaces", dbname
-    ]
-    with open(file_path, 'w') as f:
-        subprocess.run(command, stdout=f, check=True)
+    # Credentials go in a private options file: on the command line any process could read them
+    with tempfile.NamedTemporaryFile("w", suffix=".cnf", delete=False) as options:
+        options.write("[client]\n")
+        options.write(f"user={url.username}\n")
+        options.write(f"password={_option_value(url.password or '')}\n")
+        options.write(f"host={url.host}\n")
+        options.write(f"port={url.port or 3306}\n")
+    try:
+        command = [
+            f"--defaults-extra-file={options.name}",  # must be the first option
+            "--single-transaction",  # consistent snapshot without locking the tables
+            "--no-tablespaces",
+            *_tls_args(),
+            url.database,
+        ]
+        with open(partial, "w") as out:
+            result = subprocess.run(["mysqldump", *command], stdout=out, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise BackupError(f"mysqldump failed (exit {result.returncode}): {result.stderr.strip()}")
+        if "CREATE TABLE" not in partial.read_text():
+            raise BackupError("mysqldump produced no tables")
+        partial.replace(file_path)
+    finally:
+        os.unlink(options.name)
+        partial.unlink(missing_ok=True)
     print(f"Successfully backed up database to {file_path}")
 
 def backup_images(source_dir, file_path):
-    """Creates a tar archive of the images directory."""
+    """Creates a tar archive of the photos folder."""
     print("Backing up images...")
     if not os.path.isdir(source_dir):
         print(f"Warning: Image source directory '{source_dir}' not found. Skipping image backup.")
         return
     
-    command = ["tar", "-czvf", file_path, "-C", source_dir, "."]
-    subprocess.run(command, check=True)
+    subprocess.run(["tar", "-czf", str(file_path), "-C", str(source_dir), "."], check=True)
     print(f"Successfully backed up images to {file_path}")
 
 def rotate_backups(backup_base_dir, days_to_keep):
@@ -153,47 +203,38 @@ def upload_to_gdrive(source_path, remote_path):
         subprocess.run(command, check=True, capture_output=True, text=True)
         print(f"Successfully synced backup to {full_remote_path}")
     except subprocess.CalledProcessError as e:
-        print(f"Error syncing to Google Drive: {e.stderr}")
-        sys.exit(1)
+        raise BackupError(f"Error syncing to Google Drive: {e.stderr}")
 
 
-def main(days_to_keep, gdrive_remote):
-    """Main function to run the backup and rotation process."""
-    backup_base_dir = "/code/backups"
-    backup_dir = os.path.join(backup_base_dir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    os.makedirs(backup_dir, exist_ok=True)
+def main(days_to_keep, gdrive_remote, backup_base_dir=BACKUP_BASE_DIR, upload_dir=UPLOAD_DIR, session_factory=None):
+    """Runs the backup and rotation. Returns the new backup folder; exits non-zero on failure."""
+    backup_base_dir = Path(backup_base_dir)
+    backup_dir = backup_base_dir / datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    backup_dir.mkdir(parents=True, exist_ok=True)
     print(f"Created backup directory: {backup_dir}")
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
+    session = (session_factory or sessionmaker(bind=engine))()
     try:
-        json_path = os.path.join(backup_dir, "recipes_export.json")
-        export_recipes_to_json(session, json_path)
-
-        db_path = os.path.join(backup_dir, "database_backup.sql")
-        backup_database(db_path)
-
-        images_source_dir = os.path.abspath(os.getenv("UPLOAD_DIR", "/code/uploads"))  # same setting as app/crud.py
-        images_path = os.path.join(backup_dir, "image_backup.tar.gz")
-        backup_images(images_source_dir, images_path)
+        export_recipes_to_json(session, backup_dir / "recipes_export.json")
+        backup_database(backup_dir / "database_backup.sql")
+        backup_images(Path(upload_dir).resolve(), backup_dir / "image_backup.tar.gz")
 
         print("\nBackup process completed successfully!")
         print(f"All backup files are located in: {backup_dir}")
 
         if gdrive_remote:
-            upload_to_gdrive(backup_dir, gdrive_remote)
+            upload_to_gdrive(str(backup_dir), gdrive_remote)
 
         if days_to_keep:
-            rotate_backups(backup_base_dir, days_to_keep)
+            rotate_backups(str(backup_base_dir), days_to_keep)
             if gdrive_remote:
                 rotate_gdrive_backups(gdrive_remote, days_to_keep)
-
     except Exception as e:
-        print(f"\nAn error occurred during the backup process: {e}")
+        print(f"\nBackup FAILED: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
         session.close()
+    return backup_dir
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
