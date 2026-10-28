@@ -7,4 +7,5 @@ SQLAlchemy
 pydantic
 cryptography
 openai
+pillow
 alembic

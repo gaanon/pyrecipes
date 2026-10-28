@@ -63,6 +63,7 @@ docker compose exec db sh -c 'mysql -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL
 | `AI_API_BASE_URL` | Optional base URL for an OpenAI-compatible provider (e.g. Ollama, Groq, OpenRouter); omit to use the default OpenAI endpoint |
 | `AI_MODEL` | Model name to use; defaults to `gpt-4o-mini` |
 | `AI_TIMEOUT_SECONDS` | How long to wait for the AI provider before giving up (HTTP 504); defaults to `60` |
+| `AI_IMAGE_MAX_SIDE` | Longest side, in pixels, photos are shrunk to before scanning; defaults to `1280` |
 | `UPLOAD_DIR` | Folder recipe photos are saved to and served from at `/uploads`; defaults to `uploads` (`/code/uploads` in the container). `backup_app.py` archives the same folder |
 
 ## Architecture
@@ -86,7 +87,7 @@ docker compose exec db sh -c 'mysql -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL
 
 **Form submission flow:** HTML forms POST JSON-encoded ingredient/instruction/note arrays as hidden fields (serialized by frontend JS), then `main.py` deserializes them with `json.loads()` before building Pydantic schemas.
 
-**AI recipe import:** `POST /api/process-recipe-image` accepts an image upload and sends it base64-encoded (with its real content type) to the configured vision model through the async OpenAI client, so it doesn't block other requests. It returns a pre-filled `RecipeCreate` JSON that the frontend uses to populate the recipe form. Provider errors return 502, timeouts 504, and an answer that isn't a valid recipe 502, each with a `detail` message the page shows. Routes that use the database are plain `def` (FastAPI runs them in a thread pool); only non-DB routes are `async`.
+**AI recipe import:** `POST /api/process-recipe-image` accepts an image upload, shrinks it to `AI_IMAGE_MAX_SIDE` (re-encoded as an upright JPEG; smaller or unreadable images are sent as they are), and sends it base64-encoded to the configured vision model through the async OpenAI client, so it doesn't block other requests. It returns a pre-filled `RecipeCreate` JSON that the frontend uses to populate the recipe form. Provider errors return 502, timeouts 504, and an answer that isn't a valid recipe 502, each with a `detail` message the page shows. Routes that use the database are plain `def` (FastAPI runs them in a thread pool); only non-DB routes are `async`.
 
 **Meal planner:** a side panel on every page (`templates/components/planner.html`, `static/js/planner.js`) backed by the JSON API `/api/meal-plan` (GET/POST/DELETE). Dates are local calendar days formatted by `static/js/dates.js` (tested in Node by `tests/test_planner_dates.py`).
 

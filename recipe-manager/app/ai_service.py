@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import io
 import json
 import logging
 import os
@@ -8,6 +10,7 @@ from typing import Optional
 import httpx2
 import openai
 from fastapi import UploadFile
+from PIL import Image, ImageOps
 from pydantic import ValidationError
 
 from . import schemas
@@ -16,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Vision calls can be slow; give up after this many seconds rather than hang the request
 AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS") or 60)
+
+# Photos are shrunk to this longest side before sending: a full-size phone photo becomes ~12k
+# image tokens, which is slow and can exhaust a local model's GPU memory. Still sharp enough to read
+AI_IMAGE_MAX_SIDE = int(os.environ.get("AI_IMAGE_MAX_SIDE") or 1280)
 
 
 class AIServiceError(Exception):
@@ -41,6 +48,27 @@ def _root_cause(error: BaseException) -> str:
     while error.__cause__ is not None:
         error = error.__cause__
     return f"{type(error).__name__}: {error}".rstrip(": ")
+
+
+def _shrink_image(data: bytes, content_type: str) -> tuple[bytes, str]:
+    """Returns the image as a JPEG no larger than AI_IMAGE_MAX_SIDE, turned upright.
+
+    Images already small enough, and files Pillow can't read, are returned unchanged.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if max(img.size) <= AI_IMAGE_MAX_SIDE:
+                return data, content_type
+            # Applies the EXIF rotation phones use for portrait photos; re-encoding drops the tag
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((AI_IMAGE_MAX_SIDE, AI_IMAGE_MAX_SIDE))
+            out = io.BytesIO()
+            img.convert("RGB").save(out, "JPEG", quality=85)
+            return out.getvalue(), "image/jpeg"
+    except (OSError, Image.DecompressionBombError) as e:
+        logger.warning("Could not shrink the image (%s, %s bytes), sending it as is: %s",
+                       content_type, len(data), e)
+        return data, content_type
 
 
 def _get_model() -> str:
@@ -128,9 +156,10 @@ async def extract_recipe_from_image(image_file: UploadFile) -> schemas.RecipeCre
 
     Raises AIServiceError if the provider fails, times out, or returns something that isn't a recipe.
     """
-    image_data = await image_file.read()
+    # Decoding a large photo takes a moment; do it off the event loop so other requests carry on
+    image_data, content_type = await asyncio.to_thread(
+        _shrink_image, await image_file.read(), image_file.content_type or "image/jpeg")
     base64_image = base64.b64encode(image_data).decode('utf-8')
-    content_type = image_file.content_type or "image/jpeg"
     model = _get_model()
 
     try:

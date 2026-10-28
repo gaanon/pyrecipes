@@ -5,11 +5,13 @@ the response, retries and timeouts, so these tests see what production sees.
 """
 import asyncio
 import base64
+import io
 import json
 
 import httpx
 import httpx2
 import pytest
+from PIL import Image
 
 from app import ai_service
 from app.main import app
@@ -179,6 +181,65 @@ def test_answer_cut_off_by_the_token_limit_says_so(client, provider, caplog):
     assert "token limit" in response.json()["detail"]
     assert "finish_reason=length" in caplog.text
     assert "image=image/jpeg, 11 bytes" in caplog.text  # what was sent, to spot unsupported formats
+
+
+def _image(size, fmt, orientation=None):
+    exif = Image.Exif()
+    if orientation:
+        exif[0x0112] = orientation
+    out = io.BytesIO()
+    Image.new("RGB", size, "white").save(out, fmt, exif=exif)
+    return out.getvalue()
+
+
+def _sent_image(provider):
+    [request] = provider.requests
+    url = request["messages"][0]["content"][1]["image_url"]["url"]
+    header, data = url.split(",", 1)
+    return header, Image.open(io.BytesIO(base64.b64decode(data)))
+
+
+def test_large_photo_is_shrunk_before_sending(client, provider):
+    # A full-size phone photo becomes ~12k image tokens and can exhaust the GPU's memory
+    photo = _image((4000, 3000), "JPEG")
+
+    client.post("/api/process-recipe-image", files={"file": ("recipe.jpg", photo, "image/jpeg")})
+
+    header, sent = _sent_image(provider)
+    assert header == "data:image/jpeg;base64"
+    assert max(sent.size) == ai_service.AI_IMAGE_MAX_SIDE
+    assert sent.size == (1280, 960)
+
+
+def test_shrunk_photo_is_turned_upright(client, provider):
+    # Phones save portrait photos sideways plus an EXIF "rotate 90°" tag, which re-encoding drops
+    photo = _image((4000, 3000), "JPEG", orientation=6)
+
+    client.post("/api/process-recipe-image", files={"file": ("recipe.jpg", photo, "image/jpeg")})
+
+    _, sent = _sent_image(provider)
+    assert sent.size == (960, 1280)
+
+
+def test_large_png_with_transparency_is_sent_as_jpeg(client, provider):
+    out = io.BytesIO()
+    Image.new("RGBA", (3000, 2000)).save(out, "PNG")
+
+    client.post("/api/process-recipe-image", files={"file": ("recipe.png", out.getvalue(), "image/png")})
+
+    header, sent = _sent_image(provider)
+    assert header == "data:image/jpeg;base64"
+    assert sent.size == (1280, 853)
+
+
+def test_small_photo_is_sent_unchanged(client, provider):
+    photo = _image((800, 600), "PNG")
+
+    client.post("/api/process-recipe-image", files={"file": ("recipe.png", photo, "image/png")})
+
+    [request] = provider.requests
+    assert request["messages"][0]["content"][1]["image_url"]["url"] == \
+        "data:image/png;base64," + base64.b64encode(photo).decode()
 
 
 def test_refusal_is_reported(client, provider):
